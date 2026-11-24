@@ -154,6 +154,14 @@ pub struct Container {
     epoch: Rc<Cell<u64>>,
 }
 
+/// A dropped container moves the epoch, so a [`PortCell`] warmed while it lived stops answering from its cache and
+/// reports the container as gone.
+impl Drop for Container {
+    fn drop(&mut self) {
+        self.advance();
+    }
+}
+
 impl Default for Container {
     fn default() -> Self {
         Container::new()

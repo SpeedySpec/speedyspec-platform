@@ -370,4 +370,26 @@ fn main() {
         matches!(&refused, Ok(Value::Str(m)) if m.contains("SpeedySpec\\Testing\\Tally holds state")),
         &refused,
     );
+
+    // php_bind_of_a_port_key_is_shared_for_the_request: PHP's bind() of a port key keeps one object for the request,
+    // so a PHP replacement keeps its state between calls (the spec's default for ports).
+    php.restart_request().expect("the next request starts");
+    php.eval(
+        "t",
+        r"class Counting implements \SpeedySpec\Testing\Speaker {
+              private int $calls = 0;
+              public function speak(string $word): string { return (string) ++$this->calls; }
+          }
+          \SpeedySpec\Container\Container::getInstance()->bind(\SpeedySpec\Testing\Speaker::class, fn () => new Counting());",
+    )
+    .expect("PHP binds the edge port");
+    let first = speaker.speak("a".into());
+    let second = speaker.speak("b".into());
+    php.restart_request().expect("the next request starts");
+    let after = speaker.speak("c".into());
+    check(
+        "php_bind_of_a_port_key_is_shared_for_the_request",
+        first == "1" && second == "2" && after == "rust",
+        (first, second, after),
+    );
 }

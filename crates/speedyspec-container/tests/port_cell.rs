@@ -230,3 +230,56 @@ fn port_cell_with_overhead() {
         );
     }
 }
+
+#[test]
+#[should_panic(expected = "port Test\\Greeter: the container was dropped")]
+fn a_warm_cell_panics_naming_the_key_once_the_container_is_gone() {
+    let c = Rc::new(Container::new());
+    singleton(&c, KEY, "a");
+    let cell = PortCell::<dyn Greeter>::new(&c, KEY);
+    assert_eq!(cell.with(|g| g.greet()), "a");
+    drop(c);
+    cell.with(|g| g.greet());
+}
+
+/// A value that records when it is dropped.
+struct Watched(Rc<Cell<bool>>);
+
+impl Greeter for Watched {
+    fn greet(&self) -> String {
+        "watched".to_string()
+    }
+}
+
+impl Drop for Watched {
+    fn drop(&mut self) {
+        self.0.set(true);
+    }
+}
+
+#[test]
+fn a_foreign_binding_is_never_held_past_its_request() {
+    // A language bridge's value (a PHP object) is valid only for its request: the cell must not keep it after the
+    // container lets it go, or it would be released after PHP freed it.
+    let c = Rc::new(Container::new());
+    singleton(&c, KEY, "rust");
+    let cell = PortCell::<dyn Greeter>::new(&c, KEY);
+    let dropped = Rc::new(Cell::new(false));
+    c.start_request();
+    {
+        let _request = c.registering(Lifetime::Request);
+        let flag = dropped.clone();
+        c.singleton_foreign(KEY, move |_, _| {
+            Ok(Rc::new(Rc::new(Watched(flag.clone())) as Rc<dyn Greeter>)
+                as speedyspec_container::Resolved)
+        });
+    }
+    assert_eq!(cell.with(|g| g.greet()), "watched");
+    assert_eq!(cell.with(|g| g.greet()), "watched");
+    c.end_request();
+    assert!(
+        dropped.get(),
+        "the request's foreign value outlived the request"
+    );
+    assert_eq!(cell.with(|g| g.greet()), "rust");
+}

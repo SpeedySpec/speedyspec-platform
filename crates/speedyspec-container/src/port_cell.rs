@@ -5,7 +5,8 @@
 //! nothing rebound costs one compare. Any binding change, and every request start and end, moves the epoch. The
 //! next call then resolves through the container again, which serves a shared or scoped value from its own cache
 //! and records the key as resolved in this request (so ADR-017's refusal to rebind a used stateful port holds). A
-//! transient binding is never cached: it builds on every call, as its meaning requires.
+//! transient binding is never cached: it builds on every call, as its meaning requires. Nor is a foreign binding (a PHP
+//! object), which lives only as long as its request.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -84,13 +85,20 @@ impl<P: ?Sized + 'static> PortCell<P> {
             return Ok(hit.port.clone());
         }
         let port = container.make_port::<P>(self.key)?;
-        let cached = match container.sharing(self.key) {
-            Some(Sharing::Transient) | None => None,
-            Some(_) => Some(Cached {
-                // Resolving never moves the epoch, so the one read before resolving still holds.
-                epoch,
-                port: port.clone(),
-            }),
+        // A foreign value (a PHP object) is valid only for the request that made it, and the request's end frees it.
+        // The container drops its own copy at `end_request`; a copy kept here would be released after PHP freed the
+        // object. So a foreign binding is resolved through the container on every call, never held.
+        let cached = if container.is_foreign(self.key) {
+            None
+        } else {
+            match container.sharing(self.key) {
+                Some(Sharing::Transient) | None => None,
+                Some(_) => Some(Cached {
+                    // The epoch read before resolving: if resolving registered anything, this entry is merely stale.
+                    epoch,
+                    port: port.clone(),
+                }),
+            }
         };
         // A re-entrant call (a port method that calls back into the same port while a binding changed) finds the
         // cache borrowed by the outer call: it answers without caching, and the outer call's next use refreshes it.

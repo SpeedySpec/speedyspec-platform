@@ -374,9 +374,18 @@ fn native_bind(args: &[Value]) -> Result<Value, NativeError> {
     match args.get(2) {
         Some(Value::Int(1)) => c.singleton_foreign(&key, factory),
         Some(Value::Int(2)) => c.scoped_foreign(&key, factory),
+        // A port's replacement is one object for the request, so it keeps its state between Rust's calls; a binding
+        // made in PHP ends with the request either way.
+        _ if is_port(&state, &key) => c.singleton_foreign(&key, factory),
         _ => c.bind_foreign(&key, factory),
     }
     Ok(Value::Null)
+}
+
+/// Whether `key` (after aliases) is a port Rust callers reach through its PHP adapter.
+fn is_port(state: &State, key: &str) -> bool {
+    let key = state.container.get_alias(key);
+    state.ports.borrow().contains_key(&key)
 }
 
 fn native_instance(args: &[Value]) -> Result<Value, NativeError> {
