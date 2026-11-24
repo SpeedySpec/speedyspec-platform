@@ -90,8 +90,9 @@ pub trait Autowirer {
     ) -> Option<Result<Resolved, ContainerError>>;
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Sharing {
+/// How a binding shares what it builds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sharing {
     Transient,
     Singleton,
     Scoped,
@@ -573,6 +574,21 @@ impl Container {
     }
 
     // ----- resolving
+
+    /// How the entry answering `key` (after aliases) shares its value: an instance counts as a singleton; `None` when
+    /// `key` has no entry.
+    pub fn sharing(&self, key: &str) -> Option<Sharing> {
+        let key = self.get_alias(key);
+        let inner = self.inner.borrow();
+        inner
+            .entries
+            .get(&key)
+            .and_then(|stack| stack.last())
+            .map(|entry| match entry.kind {
+                Kind::Binding(_, sharing) => sharing,
+                Kind::Instance(_) => Sharing::Singleton,
+            })
+    }
 
     /// True when `key` (or what it aliases) has an entry.
     pub fn has(&self, key: &str) -> bool {

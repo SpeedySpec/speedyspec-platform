@@ -3,7 +3,9 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use speedyspec_container::{Bridged, Container, ContainerError, Lifetime, Params, Resolved};
+use speedyspec_container::{
+    Bridged, Container, ContainerError, Lifetime, Params, Resolved, Sharing,
+};
 
 fn text(value: &Resolved) -> String {
     value
@@ -439,4 +441,19 @@ fn epoch_changes_when_instances_are_forgotten() {
     assert_ne!(after_one, after_all);
     c.flush();
     assert_ne!(c.epoch(), after_one);
+}
+
+#[test]
+fn sharing_reports_the_top_entry_through_aliases() {
+    let c = Container::new();
+    assert_eq!(c.sharing("k"), None);
+    c.bind("k", |_, _| Ok(string("transient")));
+    assert_eq!(c.sharing("k"), Some(Sharing::Transient));
+    c.alias("k", "a");
+    assert_eq!(c.sharing("a"), Some(Sharing::Transient));
+    let _request = c.registering(Lifetime::Request);
+    c.scoped("k", |_, _| Ok(string("scoped")));
+    assert_eq!(c.sharing("k"), Some(Sharing::Scoped));
+    c.instance("k", string("instance"));
+    assert_eq!(c.sharing("a"), Some(Sharing::Singleton));
 }
