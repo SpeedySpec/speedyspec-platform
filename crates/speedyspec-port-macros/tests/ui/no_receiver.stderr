@@ -1,0 +1,5 @@
+error: #[port] methods take &self
+ --> tests/ui/no_receiver.rs:3:5
+  |
+3 |     fn make() -> i64;
+  |     ^^^^^^^^^^^^^^^^

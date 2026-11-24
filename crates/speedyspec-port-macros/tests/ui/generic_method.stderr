@@ -1,0 +1,5 @@
+error: #[port] methods cannot be generic: get
+ --> tests/ui/generic_method.rs:3:5
+  |
+3 |     fn get<T>(&self, v: T) -> i64;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
