@@ -6,3 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+
+[package.metadata.speedyspec]
+seam = "media"
+role = "contracts"

@@ -7,5 +7,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[package.metadata.speedyspec]
+seam = "data"
+role = "contracts"
+
 [dependencies]
 sqlparser = { version = "0.64", features = ["visitor"] }
