@@ -6,6 +6,10 @@
 //! puts every key back on its worker-lifetime entry. An entry registered by a language bridge is *foreign*
 //! ([`Container::is_foreign`]): that is the override flag, and a Rust binding never involves the bridge.
 //!
+//! [`Container::epoch`] moves on any change to any binding, alias, extender or callback, and at every request start
+//! and end. [`PortCell`] caches a resolved port against it, so a port reached through a proxy costs one compare when
+//! nothing was rebound, and re-resolves (honouring the binding's [`Sharing`]) when something was.
+//!
 //! A container belongs to one thread (the worker's, alongside PHP), so values are `Rc`.
 
 use std::any::Any;
