@@ -397,3 +397,46 @@ fn generation_changes_when_a_key_is_rebound_or_extended() {
     c.singleton("svc", |_, _| Ok(Rc::new(5_i64) as Resolved));
     assert_ne!(c.generation("svc"), extended);
 }
+
+#[test]
+fn epoch_changes_on_any_binding_change_and_at_request_edges() {
+    let c = Container::new();
+    let e0 = c.epoch();
+    let _ = c.make("missing");
+    assert_eq!(c.epoch(), e0, "resolving changes nothing");
+    c.singleton("svc", |_, _| Ok(string("one")));
+    let e1 = c.epoch();
+    assert_ne!(e1, e0, "a binding changes it");
+    let _ = c.make("svc").unwrap();
+    assert_eq!(c.epoch(), e1, "resolving a shared value changes nothing");
+    c.alias("svc", "alias");
+    let e2 = c.epoch();
+    assert_ne!(e2, e1, "an alias changes it");
+    c.extend("svc", |value, _| Ok(value));
+    let e3 = c.epoch();
+    assert_ne!(e3, e2, "an extender changes it");
+    c.start_request();
+    let e4 = c.epoch();
+    assert_ne!(e4, e3, "a request start changes it");
+    c.end_request();
+    assert_ne!(c.epoch(), e4, "a request end changes it");
+}
+
+#[test]
+fn epoch_changes_when_instances_are_forgotten() {
+    let c = Container::new();
+    c.singleton("svc", |_, _| Ok(string("one")));
+    let _ = c.make("svc").unwrap();
+    let before = c.epoch();
+    c.forget_scoped_instances();
+    let after_scoped = c.epoch();
+    assert_ne!(after_scoped, before);
+    c.forget_instances();
+    let after_all = c.epoch();
+    assert_ne!(after_all, after_scoped);
+    c.forget_instance("svc");
+    let after_one = c.epoch();
+    assert_ne!(after_one, after_all);
+    c.flush();
+    assert_ne!(c.epoch(), after_one);
+}

@@ -141,6 +141,8 @@ pub struct Container {
     building: RefCell<Vec<String>>,
     lifetime: Cell<Lifetime>,
     autowirer: RefCell<Option<Rc<dyn Autowirer>>>,
+    /// See [`Container::epoch`]; outside `inner`, so reading it never borrows.
+    epoch: Cell<u64>,
 }
 
 impl Default for Container {
@@ -208,7 +210,19 @@ impl Container {
             building: RefCell::new(Vec::new()),
             lifetime: Cell::new(Lifetime::Worker),
             autowirer: RefCell::new(None),
+            epoch: Cell::new(0),
         }
+    }
+
+    /// Changes whenever any binding, alias, extender, contextual binding, tag or callback changes, whenever an
+    /// instance is forgotten, and at every request start and end. Resolving never changes it. A cache built at
+    /// another epoch must re-check; one built at this epoch is current.
+    pub fn epoch(&self) -> u64 {
+        self.epoch.get()
+    }
+
+    fn advance(&self) {
+        self.epoch.set(self.epoch.get().wrapping_add(1));
     }
 
     /// Registrations made while the returned guard lives get `lifetime` (a bridge sets `Request` around PHP's calls).
@@ -370,6 +384,7 @@ impl Container {
     }
 
     fn push(&self, key: &str, kind: Kind, foreign: bool) {
+        self.advance();
         let lifetime = self.lifetime.get();
         let mut inner = self.inner.borrow_mut();
         let stack = inner.entries.entry(key.to_string()).or_default();
@@ -408,6 +423,7 @@ impl Container {
         if self.get_alias(key) == alias || key == alias {
             return Err(ContainerError::SelfAlias(alias.to_string()));
         }
+        self.advance();
         let lifetime = self.lifetime.get();
         let mut inner = self.inner.borrow_mut();
         let stack = inner.aliases.entry(alias.to_string()).or_default();
@@ -450,6 +466,7 @@ impl Container {
         key: &str,
         extender: impl Fn(Resolved, &Container) -> Result<Resolved, ContainerError> + 'static,
     ) {
+        self.advance();
         let key = self.get_alias(key);
         let extender: Extender = Rc::new(extender);
         let lifetime = self.lifetime.get();
@@ -487,6 +504,7 @@ impl Container {
     }
 
     fn add_contextual(&self, consumer: String, need: String, give: Give) {
+        self.advance();
         let lifetime = self.lifetime.get();
         self.inner
             .borrow_mut()
@@ -497,6 +515,7 @@ impl Container {
     }
 
     pub fn tag(&self, keys: &[&str], tag: &str) {
+        self.advance();
         let lifetime = self.lifetime.get();
         let mut inner = self.inner.borrow_mut();
         let list = inner.tags.entry(tag.to_string()).or_default();
@@ -522,6 +541,7 @@ impl Container {
         key: Option<&str>,
         callback: impl Fn(&str, &Container) + 'static,
     ) {
+        self.advance();
         let lifetime = self.lifetime.get();
         self.inner
             .borrow_mut()
@@ -530,6 +550,7 @@ impl Container {
     }
 
     pub fn resolving(&self, key: Option<&str>, callback: impl Fn(&Resolved, &Container) + 'static) {
+        self.advance();
         let lifetime = self.lifetime.get();
         self.inner.borrow_mut().resolving.push((
             key.map(str::to_string),
@@ -543,6 +564,7 @@ impl Container {
         key: Option<&str>,
         callback: impl Fn(&Resolved, &Container) + 'static,
     ) {
+        self.advance();
         let lifetime = self.lifetime.get();
         self.inner
             .borrow_mut()
@@ -626,6 +648,7 @@ impl Container {
 
     /// Starts a request: nothing counts as resolved in it yet.
     pub fn start_request(&self) {
+        self.advance();
         self.inner.borrow_mut().resolved_in_request.clear();
     }
 
@@ -797,6 +820,7 @@ impl Container {
 
     /// Drops the shared value of `key` (and its registered instances).
     pub fn forget_instance(&self, key: &str) {
+        self.advance();
         let key = self.get_alias(key);
         let mut inner = self.inner.borrow_mut();
         inner.shared.remove(&key);
@@ -808,6 +832,7 @@ impl Container {
 
     /// Drops every shared value and registered instance.
     pub fn forget_instances(&self) {
+        self.advance();
         let mut inner = self.inner.borrow_mut();
         inner.shared.clear();
         let keys: Vec<String> = inner.entries.keys().cloned().collect();
@@ -821,17 +846,20 @@ impl Container {
 
     /// Drops every scoped value; singletons stay.
     pub fn forget_scoped_instances(&self) {
+        self.advance();
         self.inner.borrow_mut().scoped.clear();
     }
 
     /// Forgets everything.
     pub fn flush(&self) {
+        self.advance();
         *self.inner.borrow_mut() = Inner::default();
     }
 
     /// Ends the request: removes every `Request` registration (bindings, instances, aliases, extenders, contextual
     /// bindings, tags, callbacks) and every scoped value. Each key answers with its worker-lifetime entry again.
     pub fn end_request(&self) {
+        self.advance();
         let mut inner = self.inner.borrow_mut();
         let keys: Vec<String> = inner.entries.keys().cloned().collect();
         for key in &keys {
