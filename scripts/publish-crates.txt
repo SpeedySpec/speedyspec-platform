@@ -4,6 +4,7 @@ speedyspec-hooks
 speedyspec-hooks-memory
 speedyspec-container
 speedyspec-cqrs
+speedyspec-port-macros
 speedyspec-wp-hooks
 speedyspec-wp-hooks-memory
 speedyspec-php-port-macros
