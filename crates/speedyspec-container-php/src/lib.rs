@@ -82,6 +82,15 @@ impl ContainerArea {
             bindings: RefCell::new(Vec::new()),
         });
         STATE.with(|s| *s.borrow_mut() = Some(state.clone()));
+        // Every edge port linked into the binary (`php_twin!`) can be bound from PHP without wiring it here.
+        for adapter in speedyspec_php_ext::port_adapters() {
+            let wrap = adapter.wrap;
+            let wrap: Wrap = Rc::new(move |object| wrap(object));
+            state
+                .ports
+                .borrow_mut()
+                .insert(adapter.key.to_string(), wrap);
+        }
         ContainerArea { state }
     }
 
