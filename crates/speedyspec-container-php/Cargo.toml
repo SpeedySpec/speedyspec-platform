@@ -13,6 +13,7 @@ exclude = ["tests/"]
 speedyspec-container = { path = "../speedyspec-container", version = "0.1.4" }
 speedyspec-php = { path = "../speedyspec-php", version = "0.7.0" }
 speedyspec-php-ext = { path = "../speedyspec-php-ext", version = "0.1.6" }
+thiserror = "2"
 
 [dev-dependencies]
 speedyspec-php-port-macros = { path = "../speedyspec-php-port-macros" }

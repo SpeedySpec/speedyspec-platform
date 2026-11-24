@@ -21,6 +21,9 @@ use speedyspec_php::native::{self, NativeError};
 use speedyspec_php::{NativeArea, PhpError};
 use speedyspec_php_ext::{Key, PhpObject, Value};
 
+mod provider;
+pub use provider::{Provider, ProviderError, compose};
+
 /// The facade's PHP source.
 const FACADE: &str = include_str!("container.php");
 const EXCEPTION: &str = "SpeedySpec\\Container\\ContainerException";

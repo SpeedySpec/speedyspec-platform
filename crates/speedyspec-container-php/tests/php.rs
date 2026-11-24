@@ -38,6 +38,33 @@ pub trait Ledger {
 
 __speedyspec_port_Ledger!(::speedyspec_php_port_macros::php_twin);
 
+/// A seam whose provider declares its port stateful.
+struct TallyProvider;
+
+const TALLY: &str = "SpeedySpec\\Testing\\Tally";
+
+impl speedyspec_container_php::Provider for TallyProvider {
+    fn seam(&self) -> &'static str {
+        "tally"
+    }
+    fn register(&self, container: &Container) {
+        container.singleton(TALLY, |_, _| Ok(Rc::new(0_i64) as Resolved));
+    }
+    fn stateful(&self) -> &'static [&'static str] {
+        &[TALLY]
+    }
+    fn area(
+        &self,
+        _: &Rc<Container>,
+    ) -> Result<Rc<dyn NativeArea>, speedyspec_container_php::ProviderError> {
+        Ok(Rc::new(TallyArea))
+    }
+}
+
+struct TallyArea;
+
+impl NativeArea for TallyArea {}
+
 struct RustLedger;
 
 impl Ledger for RustLedger {
@@ -100,7 +127,11 @@ fn main() {
         .stateful(COUNTER)
         .stateful(LEDGER_KEY)
         .bindings(vec![(CLOCK.to_string(), "FixedClock".to_string())]);
-    let areas: Vec<Rc<dyn NativeArea>> = vec![twins_area(), Rc::new(area)];
+    let providers: Vec<Rc<dyn speedyspec_container_php::Provider>> = vec![Rc::new(TallyProvider)];
+    let (area, provided, _) =
+        speedyspec_container_php::compose(&container, area, &providers).expect("composes");
+    let mut areas: Vec<Rc<dyn NativeArea>> = vec![twins_area(), Rc::new(area)];
+    areas.extend(provided);
     let php = Php::boot(BootOptions {
         hooks: Rc::new(MemoryHooks::new()),
         preload: &[],
@@ -319,6 +350,24 @@ fn main() {
     check(
         "stateful_edge_port_rebind_after_use_is_refused_in_a_later_request",
         matches!(&refused, Ok(Value::Str(m)) if m.contains("SpeedySpec\\Testing\\Ledger holds state")),
+        &refused,
+    );
+
+    // stateful_keys_from_a_provider_are_marked
+    php.restart_request().expect("the next request starts");
+    container.make(TALLY).expect("the tally resolves");
+    let refused = php.eval(
+        "t",
+        r"try {
+              \SpeedySpec\Container\Container::getInstance()->bind('SpeedySpec\Testing\Tally', fn () => 5);
+              return 'bound';
+          } catch (\SpeedySpec\Container\ContainerException $e) {
+              return $e->getMessage();
+          }",
+    );
+    check(
+        "stateful_keys_from_a_provider_are_marked",
+        matches!(&refused, Ok(Value::Str(m)) if m.contains("SpeedySpec\\Testing\\Tally holds state")),
         &refused,
     );
 }
