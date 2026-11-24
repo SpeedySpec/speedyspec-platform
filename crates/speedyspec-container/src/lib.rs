@@ -13,6 +13,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+mod port_cell;
+pub use port_cell::PortCell;
+
 /// A resolved value.
 pub type Resolved = Rc<dyn Any>;
 
@@ -142,8 +145,9 @@ pub struct Container {
     building: RefCell<Vec<String>>,
     lifetime: Cell<Lifetime>,
     autowirer: RefCell<Option<Rc<dyn Autowirer>>>,
-    /// See [`Container::epoch`]; outside `inner`, so reading it never borrows.
-    epoch: Cell<u64>,
+    /// See [`Container::epoch`]; outside `inner`, so reading it never borrows, and shared with every
+    /// [`PortCell`] so their fast path never upgrades a weak reference.
+    epoch: Rc<Cell<u64>>,
 }
 
 impl Default for Container {
@@ -211,7 +215,7 @@ impl Container {
             building: RefCell::new(Vec::new()),
             lifetime: Cell::new(Lifetime::Worker),
             autowirer: RefCell::new(None),
-            epoch: Cell::new(0),
+            epoch: Rc::new(Cell::new(0)),
         }
     }
 
@@ -220,6 +224,11 @@ impl Container {
     /// another epoch must re-check; one built at this epoch is current.
     pub fn epoch(&self) -> u64 {
         self.epoch.get()
+    }
+
+    /// The cell [`Container::epoch`] reads.
+    pub(crate) fn epoch_cell(&self) -> Rc<Cell<u64>> {
+        self.epoch.clone()
     }
 
     fn advance(&self) {
