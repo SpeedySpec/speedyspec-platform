@@ -1,0 +1,161 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99"
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  # Every crate but the five that link the static PHP; the php job lints those.
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99"
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: >-
+          cargo clippy --workspace --all-targets --locked
+          --exclude speedyspec-php --exclude speedyspec-php-ext --exclude speedyspec-container-php
+          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php
+          -- -D warnings
+
+  # Without the static PHP: every crate but the five that link it (the php job runs those).
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99"
+          targets: ${{ matrix.target }}
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: Swatinem/rust-cache@v2
+      - run: >-
+          cargo test --workspace --locked --target ${{ matrix.target }}
+          --exclude speedyspec-php --exclude speedyspec-php-ext --exclude speedyspec-container-php
+          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php
+          --exclude speedyspec-wp-text-diff --exclude speedyspec-wp-token-map --exclude speedyspec-wp-theme-json-contracts
+      # Until the readiness PR moves the server-only tests: these three crates have tests that read data only the
+      # server holds (compat/text-diff, tests/php/data/html5-entities, the theme.json areas release), so only their
+      # other tests run here.
+      - run: >-
+          cargo test --locked --target ${{ matrix.target }}
+          -p speedyspec-wp-text-diff -p speedyspec-wp-token-map -p speedyspec-wp-theme-json-contracts --lib
+          -- --skip the_embedded_files_come_from_the_theme_json_areas_release
+      - run: cargo test --locked --target ${{ matrix.target }} -p speedyspec-wp-token-map --test map
+      - run: >-
+          cargo test --locked --target ${{ matrix.target }}
+          -p speedyspec-wp-text-diff -p speedyspec-wp-token-map -p speedyspec-wp-theme-json-contracts --doc
+
+  # The static PHP (scripts/build-php.sh) and the five crates that embed it.
+  php:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-aarch64
+            os: macos-15
+            run: ""
+            platform: ""
+            php-build: .php-build
+          - name: linux-x86_64
+            os: ubuntu-latest
+            run: scripts/linux-php.sh
+            platform: linux/amd64
+            php-build: .php-build-linux
+          - name: linux-aarch64
+            os: ubuntu-24.04-arm
+            run: scripts/linux-php.sh
+            platform: linux/arm64
+            php-build: .php-build-linux-arm64
+    name: php (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    env:
+      # Which container platform scripts/linux-php.sh runs (Linux rows only).
+      SPEEDYSPEC_LINUX_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        if: matrix.run == ''
+        with:
+          toolchain: "1.99"
+          components: clippy
+      - name: Cache static PHP
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ matrix.php-build }}/spc
+            ${{ matrix.php-build }}/buildroot
+          key: php-${{ matrix.name }}-${{ hashFiles('crates/speedyspec-php/php-version', 'scripts/build-php.sh', 'scripts/lib/**') }}
+      - name: Build static PHP
+        env:
+          # Runners are throwaway, so spc may install missing build tools.
+          SPEEDYSPEC_ALLOW_HOST_INSTALL: "1"
+          # spc looks up source releases through the GitHub API; the read-only token avoids rate limits.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ${{ matrix.run }} scripts/build-php.sh
+      # Every extension WordPress needs: a missing one fails here, by name.
+      - name: Extensions
+        run: ${{ matrix.run }} cargo test --locked -p speedyspec-php --test extensions
+      - name: Clippy with php
+        if: matrix.run == ''
+        run: >-
+          cargo clippy --all-targets --locked
+          -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-compat -p speedyspec-wp-hooks-php
+          -- -D warnings
+      - name: Test with php
+        run: >-
+          ${{ matrix.run }} cargo test --locked
+          -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-wp-hooks-php
+      # Until the readiness PR moves the server-only tests: tests/bytes.rs runs the formatting area, whose catalogue
+      # (compat/formatting) stays in the server.
+      - name: Test speedyspec-compat with php
+        run: ${{ matrix.run }} cargo test --locked -p speedyspec-compat --lib --test format
+
+  # The publish list matches the workspace, and the platform is closed: nothing outside this repository and crates.io.
+  crates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99"
+      - name: Metadata
+        run: cargo metadata --format-version 1 --no-deps --locked > "$RUNNER_TEMP/metadata.json"
+      - name: Check the list
+        run: scripts/release-crates.sh check "$RUNNER_TEMP/metadata.json"
+      - name: Check the closure
+        run: |
+          bash scripts/tests/platform-closure.sh
+          scripts/platform-closure.sh check "$RUNNER_TEMP/metadata.json" "$GITHUB_WORKSPACE"
+
+  # The crates' documentation. Filled in by the readiness PR.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No docs checks yet."

@@ -6,19 +6,31 @@ use speedyspec_wp_shortcode_contracts::{
 };
 
 fn names(list: &[&str]) -> Vec<TagName> {
-    list.iter().map(|n| TagName::new(n.as_bytes()).unwrap()).collect()
+    list.iter()
+        .map(|n| TagName::new(n.as_bytes()).unwrap())
+        .collect()
 }
 
 #[test]
 fn tag_name_rejects_empty_and_reserved() {
     assert_eq!(TagName::new(b"").unwrap_err(), InvalidTagName::Empty);
-    assert_eq!(TagName::new(b" \t\n\r\0\x0B").unwrap_err(), InvalidTagName::Empty);
+    assert_eq!(
+        TagName::new(b" \t\n\r\0\x0B").unwrap_err(),
+        InvalidTagName::Empty
+    );
     for bad in [b'<', b'>', b'&', b'/', b'[', b']', b'=', 0x00, 0x20, 0x1f] {
         let name = [b'a', bad, b'b'];
-        assert_eq!(TagName::new(&name).unwrap_err(), InvalidTagName::Reserved, "byte {bad:#x}");
+        assert_eq!(
+            TagName::new(&name).unwrap_err(),
+            InvalidTagName::Reserved,
+            "byte {bad:#x}"
+        );
     }
     for good in ["a.b", "a-b", "a+", "caption", "\u{e9}t\u{e9}"] {
-        assert_eq!(TagName::new(good.as_bytes()).unwrap().as_bytes(), good.as_bytes());
+        assert_eq!(
+            TagName::new(good.as_bytes()).unwrap().as_bytes(),
+            good.as_bytes()
+        );
     }
 }
 
@@ -39,9 +51,16 @@ fn tag_set_flags_unsafe_names() {
 fn att_key_numeric_strings_follow_php() {
     assert_eq!(AttKey::from_php(b"1".to_vec()), AttKey::Int(1));
     assert_eq!(AttKey::from_php(b"-1".to_vec()), AttKey::Int(-1));
-    assert_eq!(AttKey::from_php(b"9223372036854775807".to_vec()), AttKey::Int(i64::MAX));
+    assert_eq!(
+        AttKey::from_php(b"9223372036854775807".to_vec()),
+        AttKey::Int(i64::MAX)
+    );
     for s in ["01", "1.0", "-0", "9223372036854775808", "", " 1", "a"] {
-        assert_eq!(AttKey::from_php(s.as_bytes().to_vec()), AttKey::Str(s.as_bytes().to_vec()), "{s:?}");
+        assert_eq!(
+            AttKey::from_php(s.as_bytes().to_vec()),
+            AttKey::Str(s.as_bytes().to_vec()),
+            "{s:?}"
+        );
     }
 }
 
@@ -83,7 +102,10 @@ fn preg_quote_matches_php_85() {
 
 #[test]
 fn alternation_joins_quoted_names_in_order() {
-    assert_eq!(shortcode_tag_alternation(&names(&["gallery", "a.b"])), b"gallery|a\\.b".to_vec());
+    assert_eq!(
+        shortcode_tag_alternation(&names(&["gallery", "a.b"])),
+        b"gallery|a\\.b".to_vec()
+    );
 }
 
 #[test]
@@ -112,7 +134,15 @@ fn match_groups_give_empty_for_unmatched() {
     let m = ShortcodeMatch {
         start: 1,
         end: 4,
-        groups: [Some(1..4), Some(2..2), Some(2..3), Some(3..3), None, None, Some(4..4)],
+        groups: [
+            Some(1..4),
+            Some(2..2),
+            Some(2..3),
+            Some(3..3),
+            None,
+            None,
+            Some(4..4),
+        ],
     };
     let g = m.groups_in(hay);
     assert_eq!(g.0[0], b"[a]".to_vec());

@@ -5,8 +5,8 @@ pub fn preg_quote(s: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(s.len() * 2);
     for &b in s {
         match b {
-            b'.' | b'\\' | b'+' | b'*' | b'?' | b'[' | b'^' | b']' | b'$' | b'(' | b')' | b'{' | b'}' | b'='
-            | b'!' | b'<' | b'>' | b'|' | b':' | b'-' | b'#' => {
+            b'.' | b'\\' | b'+' | b'*' | b'?' | b'[' | b'^' | b']' | b'$' | b'(' | b')' | b'{'
+            | b'}' | b'=' | b'!' | b'<' | b'>' | b'|' | b':' | b'-' | b'#' => {
                 out.push(b'\\');
                 out.push(b);
             }
