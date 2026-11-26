@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Contracts for WordPress's sodium functions: `wp_fast_hash()`, `wp_verify_fast_hash()`, `wp_trusted_keys()` and
 //! `verify_file_signature()`.
 //!

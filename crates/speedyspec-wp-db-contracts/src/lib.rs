@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The database seam's contracts: the `wpdb` port other seams call, its values and its errors.
 //!
 //! - [`Wpdb`] is `wpdb` as other seams use it. `speedyspec-wp-db` implements it.

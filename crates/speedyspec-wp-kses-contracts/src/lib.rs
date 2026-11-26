@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's kses sanitizer as contracts.
 //!
 //! The plain types kses works with (the allowlist `$allowed_html`, attribute rules, protocols, contexts) and the

@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The object cache seam's contracts: the `wp_cache_*` port other seams call, and its errors.
 //!
 //! - [`ObjectCache`] is the object cache as other seams use it. `speedyspec-wp-object-cache` implements it.

@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The ports of WordPress's formatting functions.
 //!
 //! Formatting reads a few outside facts: the site's charset and settings, translations, the locale, and where to

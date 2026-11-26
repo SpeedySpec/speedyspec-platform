@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's cron contracts (`wp-includes/cron.php`): the cron array as a plain value, the ports the scheduling
 //! core needs, and its outcomes.
 //!

@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Routing contracts.
 //!
 //! What a route is, what resolving a request answers, the plain route data a table is compiled from, the store that

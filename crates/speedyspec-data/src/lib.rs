@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Data-access contracts for speedyspec.
 //!
 //! Values, rows and the statement model (Query Object); the SQL, NoSQL and Direct store contracts; dialects

@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Contracts of the unified operation API.
 //!
 //! Plain value objects and ports, with no dependency on any SpeedySpec crate: the neutral [`Value`] every transport

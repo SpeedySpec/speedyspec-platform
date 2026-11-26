@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Ports and plain values of the WordPress translations port.
 //!
 //! The domain (`speedyspec-wp-i18n`) depends on these traits; adapters implement them: file readers and the file
