@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! kses.php's pure string functions, which need no hooks, over fast byte matchers.
 //!
 //! [`scan`] holds one `#[inline]` matcher per kses regex; the standalone functions here and the fused scanner in

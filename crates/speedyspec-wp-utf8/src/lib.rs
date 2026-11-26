@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's UTF-8 helpers over bytes.
 //!
 //! Each function has a reference implementation, a line-for-line port of WordPress's pure-PHP fallback, and where it

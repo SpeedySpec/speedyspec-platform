@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's HTML API syntax pieces, ported from WordPress.
 //!
 //! - [`decode`], [`decode_attribute`], [`decode_text_node`] and [`read_character_reference`] are `WP_HTML_Decoder`.
