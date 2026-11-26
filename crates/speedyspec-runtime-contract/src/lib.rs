@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The contract between `speedyspec-server` and `speedyspec-php-runtime`. It covers only how a worker is started
 //! ([`WorkerSpec`]), the per-request report a worker sends after each request ([`WorkerReport`]), and what the
 //! runtime binary says about itself ([`RuntimeManifest`]). Requests themselves are FastCGI 1.0.

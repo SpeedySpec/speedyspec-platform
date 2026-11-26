@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! FastCGI 1.0 (<https://fastcgi-archives.github.io/FastCGI_Specification.html>), as the server and its PHP workers
 //! speak it.
 //!
