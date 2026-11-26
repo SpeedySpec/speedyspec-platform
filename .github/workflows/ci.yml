@@ -123,9 +123,14 @@ jobs:
           -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-compat
           -p speedyspec-wp-hooks-php -p speedyspec-php-port-macros
 
-  # The publish list matches the workspace, and the platform is closed: nothing outside this repository and crates.io.
+  # The publish list matches the workspace, the platform is closed (nothing outside this repository and crates.io),
+  # and every crate packages and builds from its package. Verifying builds the PHP crates, so this runs in the
+  # linux-x86_64 container on the static PHP the php job built (restored from its cache, or built again on a miss).
   crates:
     runs-on: ubuntu-latest
+    needs: php
+    env:
+      SPEEDYSPEC_LINUX_PLATFORM: linux/amd64
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
@@ -142,9 +147,34 @@ jobs:
         run: |
           cargo metadata --format-version 1 --locked > "$RUNNER_TEMP/metadata-full.json"
           scripts/platform-closure.sh check "$RUNNER_TEMP/metadata-full.json" "$GITHUB_WORKSPACE"
+      - name: Check each package's files and manifest
+        run: scripts/check-crate-packages.sh
+      - name: Restore static PHP
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            .php-build-linux/spc
+            .php-build-linux/buildroot
+          key: php-linux-x86_64-${{ hashFiles('crates/speedyspec-php/php-version', 'scripts/build-php.sh', 'scripts/lib/**') }}
+      - name: Build static PHP
+        env:
+          SPEEDYSPEC_ALLOW_HOST_INSTALL: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/linux-php.sh scripts/build-php.sh
+      - name: Package and verify every crate
+        run: scripts/linux-php.sh cargo package --workspace --locked
 
-  # The crates' documentation. Filled in by the readiness PR.
+  # What docs.rs builds: every published crate's docs, with DOCS_RS set and no PHP installed.
   docs:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "No docs checks yet."
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99"
+      - uses: Swatinem/rust-cache@v2
+      - name: Build each crate's docs as docs.rs does
+        run: |
+          for c in $(grep -v -e '^#' -e '^$' scripts/publish-crates.txt); do
+            DOCS_RS=1 RUSTDOCFLAGS="--cfg docsrs" cargo doc --no-deps --locked -p "$c" || exit 1
+          done
