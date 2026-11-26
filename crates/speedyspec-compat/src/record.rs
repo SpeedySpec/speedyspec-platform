@@ -282,6 +282,9 @@ mod tests {
     /// Every area resolves to a release the table pins, and has that release's fixture.
     #[test]
     fn every_area_resolves_to_a_pinned_release_with_a_fixture() {
+        let _held = crate::COMPAT_DIR_VARIABLE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let table = releases().expect("compat/wordpress.json");
         assert!(
             table.releases.contains_key(&table.wordpress),

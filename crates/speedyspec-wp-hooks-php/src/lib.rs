@@ -302,11 +302,6 @@ impl NativeArea for WpHooksArea {
     }
 }
 
-/// A runner of Task 6's hook scenarios through these functions (nothing to load: they are native).
-pub fn hooks_scenario_runner(php: speedyspec_php::Php) -> speedyspec_compat::PhpRunner {
-    speedyspec_compat::PhpRunner::new(php, |_| Ok(()))
-}
-
 // ----- conversions
 
 fn arg(args: &[Value], i: usize) -> Value {
