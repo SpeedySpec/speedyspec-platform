@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Command and query buses.
 //!
 //! Every use case is a [`Command`] (changes state) or a [`Query`] (reads it), and has one handler, bound in the

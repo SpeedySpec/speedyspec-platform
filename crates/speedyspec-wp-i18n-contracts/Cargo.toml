@@ -1,16 +1,25 @@
 [package]
 name = "speedyspec-wp-i18n-contracts"
 version = "0.1.4"
-publish = false
 description = "Ports and plain values of the WordPress translations port: file readers, the file probe and the file cache."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["speedyspec", "wordpress", "i18n", "translations", "contracts"]
+categories = ["web-programming", "text-processing"]
+# The package ships the library only; the tests run in this repository.
+exclude = ["tests/"]
 
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.speedyspec]
 seam = "i18n"
 role = "contracts"
 
 [dependencies]
-speedyspec-hooks = { path = "../speedyspec-hooks" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }

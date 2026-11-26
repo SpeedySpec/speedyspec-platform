@@ -17,14 +17,17 @@ pub const ROOT_BLOCK_SELECTOR: &str = "body";
 pub const ROOT_CSS_PROPERTIES_SELECTOR: &str = ":root";
 
 /// The WordPress release the embedded `wordpress-<release>.*` files were exported from. `include_bytes!` takes only a
-/// literal, so this macro is the one place the crate names the release; a test checks that it equals the theme-json
-/// area's release (`compat/theme-json/source.json`'s override, else `compat/wordpress.json`'s pin). Moving the pin
-/// edits this macro too.
+/// literal, so this macro is the one place the crate names the release. Moving the theme-json area's pin edits this
+/// macro too: speedyspec-server checks that [`DATA_RELEASE`] equals the area's release
+/// (`compat/theme-json/source.json`'s override, else `compat/wordpress.json`'s pin).
 macro_rules! data_release {
     () => {
         "7.2-RC2"
     };
 }
+
+/// The WordPress release the embedded `wordpress-<release>.*` files were exported from: `data_release!`'s value.
+pub const DATA_RELEASE: &str = data_release!();
 
 const SERIALIZED: &[u8] = include_bytes!(concat!("wordpress-", data_release!(), ".constants"));
 
@@ -220,21 +223,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_embedded_files_come_from_the_theme_json_areas_release() {
-        let compat = concat!(env!("CARGO_MANIFEST_DIR"), "/../../compat");
-        let json = |path: String| -> serde_json::Value {
-            serde_json::from_str(&std::fs::read_to_string(&path).expect(&path)).expect(&path)
-        };
-        let source = json(format!("{compat}/theme-json/source.json"));
-        let table = json(format!("{compat}/wordpress.json"));
-        let release = source["wordpress"].as_str().or(table["wordpress"].as_str());
-        assert_eq!(
-            release,
-            Some(data_release!()),
-            "the theme-json area is recorded from WordPress {release:?}, not {}: re-export the \
-             wordpress-<release>.* files with tools/ and change data_release!",
-            data_release!()
+    fn the_data_release_names_the_embedded_files() {
+        assert!(!DATA_RELEASE.is_empty());
+        let path = format!(
+            "{}/src/schema/wordpress-{DATA_RELEASE}.constants",
+            env!("CARGO_MANIFEST_DIR")
         );
+        let file = std::fs::read(&path).expect(&path);
+        assert_eq!(file, SERIALIZED, "{path} is not the embedded constants");
     }
 
     #[test]

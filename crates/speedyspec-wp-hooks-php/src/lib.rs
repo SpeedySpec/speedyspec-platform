@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's hook functions, `WP_Hook` and the hook globals in PHP, over the Rust Hook API.
 //!
 //! [`WpHooksArea`] declares, at the start of every request (from `hooks.php`), WordPress's hook functions with their
@@ -300,11 +304,6 @@ impl NativeArea for WpHooksArea {
         registry::clear();
         self.state.memory.end_request();
     }
-}
-
-/// A runner of Task 6's hook scenarios through these functions (nothing to load: they are native).
-pub fn hooks_scenario_runner(php: speedyspec_php::Php) -> speedyspec_compat::PhpRunner {
-    speedyspec_compat::PhpRunner::new(php, |_| Ok(()))
 }
 
 // ----- conversions

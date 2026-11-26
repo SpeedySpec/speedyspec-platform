@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The REST transport's contracts.
 //!
 //! [`RestBinding`] says where an operation is served; [`RestRequest`] and [`RestResponse`] are what hooks and handlers

@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The Caching Store contract: byte values under a group and a key, with optional expiry.
 //!
 //! Implementations (Strategy) live in their own crates: memory, SQL, key-value and file stores.

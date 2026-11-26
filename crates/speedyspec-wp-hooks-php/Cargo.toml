@@ -6,19 +6,32 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["speedyspec", "wordpress", "hooks", "php", "ffi"]
+categories = ["development-tools::ffi", "web-programming"]
 # The tests read the repository's compat/ and tests/php, so they run in this repository only.
 exclude = ["tests/"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+# docs.rs's ext-php-rs bindings have no embed symbols, so the docs are built without the `embed` feature.
+no-default-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.speedyspec]
 seam = "hooks"
 role = "php"
 
+[features]
+default = ["embed"]
+# The embedded PHP. Off only for docs.rs, which cannot build it (see speedyspec-php).
+embed = ["speedyspec-php/embed", "speedyspec-php-ext/embed"]
+
 [dependencies]
-speedyspec-compat = { path = "../speedyspec-compat", version = "0.9.0" }
 speedyspec-container = { path = "../speedyspec-container", version = "0.1.4" }
 speedyspec-cqrs = { path = "../speedyspec-cqrs", version = "0.1.4" }
-speedyspec-php = { path = "../speedyspec-php", version = "0.7.0" }
-speedyspec-php-ext = { path = "../speedyspec-php-ext", version = "0.1.6" }
+speedyspec-php = { path = "../speedyspec-php", version = "0.7.0", default-features = false }
+speedyspec-php-ext = { path = "../speedyspec-php-ext", version = "0.1.6", default-features = false }
 speedyspec-wp-hooks = { path = "../speedyspec-wp-hooks", version = "0.1.4" }
 speedyspec-wp-hooks-memory = { path = "../speedyspec-wp-hooks-memory", version = "0.1.4" }
 speedyspec-wp-hooks-contracts = { path = "../speedyspec-wp-hooks-contracts", version = "0.1.0" }
@@ -26,6 +39,7 @@ speedyspec-wp-hooks-contracts = { path = "../speedyspec-wp-hooks-contracts", ver
 [dev-dependencies]
 serde_json = "1"
 sha2 = "0.10"
+speedyspec-compat = { path = "../speedyspec-compat" }
 speedyspec-container-php = { path = "../speedyspec-container-php" }
 speedyspec-hooks-memory = { path = "../speedyspec-hooks-memory" }
 ureq = "3"

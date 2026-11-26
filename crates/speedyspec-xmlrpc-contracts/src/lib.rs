@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The XML-RPC transport's contracts.
 //!
 //! [`XmlRpcBinding`] says which method name serves an operation and how its positional parameters map to the input;

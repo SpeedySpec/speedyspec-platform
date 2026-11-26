@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! PHP's serialize format in Rust (a domain service): `serialize`, `unserialize`, WordPress's `maybe_serialize`
 //! family, and conversions to the Hook API's values. No PHP runtime is involved.
 

@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The container from PHP.
 //!
 //! [`ContainerArea`] adds `SpeedySpec\Container\Container` to PHP: a facade (declared at the start of every request,

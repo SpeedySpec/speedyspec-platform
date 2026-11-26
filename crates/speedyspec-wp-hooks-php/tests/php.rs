@@ -11,7 +11,12 @@ use speedyspec_php::{BootOptions, NativeArea, Php, PhpError};
 use speedyspec_php_ext::{Value, boundary_crossings, twins_area};
 use speedyspec_wp_hooks_contracts::{Callback, HookName, HookValue};
 use speedyspec_wp_hooks_memory::MemoryHookStore;
-use speedyspec_wp_hooks_php::{WpHooksArea, hooks_scenario_runner};
+use speedyspec_wp_hooks_php::WpHooksArea;
+
+/// A runner of the hook scenarios through these functions (nothing to load: they are native).
+fn hooks_scenario_runner(php: Php) -> speedyspec_compat::PhpRunner {
+    speedyspec_compat::PhpRunner::new(php, |_| Ok(()))
+}
 
 fn check(name: &str, ok: bool, detail: impl std::fmt::Debug) {
     if ok {

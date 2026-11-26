@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's theme.json contracts: the typed model, the value objects, the schema tables and the ports.
 //!
 //! Nothing here knows PHP, files or a database. The core crate (`speedyspec-wp-theme-json`) holds the domain

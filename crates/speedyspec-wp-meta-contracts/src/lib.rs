@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's metadata API contracts: the meta values, the entity and its errors.
 
 #[cfg(feature = "conformance")]

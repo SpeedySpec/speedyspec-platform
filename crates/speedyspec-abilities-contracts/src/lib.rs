@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The Abilities transport's contracts.
 //!
 //! [`AbilityBinding`] holds the metadata an operation is published with as an ability (label, description, category,

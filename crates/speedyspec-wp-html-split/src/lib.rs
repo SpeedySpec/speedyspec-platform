@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's `wp_html_split()`, in Rust.
 //!
 //! WordPress splits HTML into text and tags with a regular expression (`get_html_split_regex()`), not an HTML5

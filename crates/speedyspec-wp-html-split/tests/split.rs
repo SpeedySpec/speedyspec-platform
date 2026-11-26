@@ -22,7 +22,10 @@ fn basic_tag() {
 
 #[test]
 fn basic_comment() {
-    check("abcd <!-- <html> --> efgh", &["abcd ", "<!-- <html> -->", " efgh"]);
+    check(
+        "abcd <!-- <html> --> efgh",
+        &["abcd ", "<!-- <html> -->", " efgh"],
+    );
 }
 
 #[test]

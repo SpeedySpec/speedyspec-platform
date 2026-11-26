@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Contracts for WordPress's password functions: `wp_hash_password()`, `wp_check_password()`,
 //! `wp_password_needs_rehash()`, `wp_generate_password()` and `wp_rand()`.
 //!

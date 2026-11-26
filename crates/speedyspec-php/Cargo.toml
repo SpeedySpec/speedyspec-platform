@@ -6,16 +6,33 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["speedyspec", "php", "embed", "interpreter", "ffi"]
+categories = ["development-tools::ffi", "api-bindings"]
 # The tests read the repository's compat/ and tests/php, so they run in this repository only.
 exclude = ["tests/"]
+
+# docs.rs has no static PHP: build.rs links nothing when DOCS_RS is set, and ext-php-rs uses its bundled bindings.
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+# docs.rs's ext-php-rs bindings have no embed symbols, so the docs are built without the `embed` feature.
+no-default-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.speedyspec]
 seam = "container"
 role = "platform"
 
+[features]
+default = ["embed"]
+# The embedded interpreter: Php::boot and everything that runs PHP. Off only for docs.rs.
+embed = ["ext-php-rs/embed"]
+
 [dependencies]
-# The `embed` feature links libphp and exposes the SAPI and engine entry points.
-ext-php-rs = { version = "=0.16.5", features = ["embed"] }
+# ext-php-rs's `embed` feature links libphp and exposes the SAPI and engine entry points. It comes only through this
+# crate's `embed` feature (on by default), so docs.rs, whose ext-php-rs stub bindings have no embed symbols, can build
+# the docs without it.
+ext-php-rs = { version = "=0.16.5" }
 # The hook contract only; the backend is chosen by whoever boots PHP.
 speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
 
@@ -40,7 +57,3 @@ harness = false
 [[test]]
 name = "global_array"
 harness = false
-
-# docs.rs has no static PHP: build.rs links nothing when DOCS_RS is set, and ext-php-rs uses its bundled bindings.
-[package.metadata.docs.rs]
-targets = ["x86_64-unknown-linux-gnu"]

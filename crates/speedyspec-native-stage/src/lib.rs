@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The contract for answering a request in Rust before PHP runs.
 //!
 //! The runtime builds a [`StageChain`] once per worker and asks it about every request before it starts the PHP

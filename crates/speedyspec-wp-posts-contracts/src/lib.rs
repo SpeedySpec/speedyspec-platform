@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's post contracts: the post entity and its values, the post type and post status names and resolved
 //! values, the errors and the ports.
 

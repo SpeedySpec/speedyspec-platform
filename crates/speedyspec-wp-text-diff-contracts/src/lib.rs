@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Contracts for WordPress's text diff (`wp_text_diff()`).
 //!
 //! The values a diff is asked for and answers with, and the ports an implementation is built from:

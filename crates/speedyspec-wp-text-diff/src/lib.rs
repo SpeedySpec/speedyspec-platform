@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's `wp_text_diff()` in Rust.
 //!
 //! - [`TextDiff`] is the function: lines diffed by a [`SequenceDiffer`], rows rendered as

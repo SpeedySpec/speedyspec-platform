@@ -19,7 +19,7 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all --check
 
-  # Every crate but the five that link the static PHP; the php job lints those.
+  # Every crate but the six whose builds or tests link the static PHP; the php job lints those.
   clippy:
     runs-on: ubuntu-latest
     steps:
@@ -32,10 +32,10 @@ jobs:
       - run: >-
           cargo clippy --workspace --all-targets --locked
           --exclude speedyspec-php --exclude speedyspec-php-ext --exclude speedyspec-container-php
-          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php
+          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php --exclude speedyspec-php-port-macros
           -- -D warnings
 
-  # Without the static PHP: every crate but the five that link it (the php job runs those).
+  # Without the static PHP: every crate but the six that link it (the php job runs those).
   test:
     strategy:
       fail-fast: false
@@ -58,21 +58,9 @@ jobs:
       - run: >-
           cargo test --workspace --locked --target ${{ matrix.target }}
           --exclude speedyspec-php --exclude speedyspec-php-ext --exclude speedyspec-container-php
-          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php
-          --exclude speedyspec-wp-text-diff --exclude speedyspec-wp-token-map --exclude speedyspec-wp-theme-json-contracts
-      # Until the readiness PR moves the server-only tests: these three crates have tests that read data only the
-      # server holds (compat/text-diff, tests/php/data/html5-entities, the theme.json areas release), so only their
-      # other tests run here.
-      - run: >-
-          cargo test --locked --target ${{ matrix.target }}
-          -p speedyspec-wp-text-diff -p speedyspec-wp-token-map -p speedyspec-wp-theme-json-contracts --lib
-          -- --skip the_embedded_files_come_from_the_theme_json_areas_release
-      - run: cargo test --locked --target ${{ matrix.target }} -p speedyspec-wp-token-map --test map
-      - run: >-
-          cargo test --locked --target ${{ matrix.target }}
-          -p speedyspec-wp-text-diff -p speedyspec-wp-token-map -p speedyspec-wp-theme-json-contracts --doc
+          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php --exclude speedyspec-php-port-macros
 
-  # The static PHP (scripts/build-php.sh) and the five crates that embed it.
+  # The static PHP (scripts/build-php.sh) and the six crates whose builds or tests embed it.
   php:
     strategy:
       fail-fast: false
@@ -127,17 +115,16 @@ jobs:
         run: >-
           cargo clippy --all-targets --locked
           -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-compat -p speedyspec-wp-hooks-php
+          -p speedyspec-php-port-macros
           -- -D warnings
       - name: Test with php
         run: >-
           ${{ matrix.run }} cargo test --locked
-          -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-wp-hooks-php
-      # Until the readiness PR moves the server-only tests: tests/bytes.rs runs the formatting area, whose catalogue
-      # (compat/formatting) stays in the server.
-      - name: Test speedyspec-compat with php
-        run: ${{ matrix.run }} cargo test --locked -p speedyspec-compat --lib --test format
+          -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-compat
+          -p speedyspec-wp-hooks-php -p speedyspec-php-port-macros
 
-  # The publish list matches the workspace, and the platform is closed: nothing outside this repository and crates.io.
+  # The publish list matches the workspace, the platform is closed (nothing outside this repository and crates.io),
+  # and each crate's package has the files and manifest fields it needs.
   crates:
     runs-on: ubuntu-latest
     steps:
@@ -156,9 +143,52 @@ jobs:
         run: |
           cargo metadata --format-version 1 --locked > "$RUNNER_TEMP/metadata-full.json"
           scripts/platform-closure.sh check "$RUNNER_TEMP/metadata-full.json" "$GITHUB_WORKSPACE"
+      - name: Check each package's files and manifest
+        run: scripts/check-crate-packages.sh
 
-  # The crates' documentation. Filled in by the readiness PR.
+  # Every crate packages and builds from its package. Verifying builds the PHP crates, so this runs in the
+  # linux-x86_64 container on the static PHP the php job built (restored from its cache, or built again on a miss).
+  package:
+    runs-on: ubuntu-latest
+    needs: php
+    env:
+      SPEEDYSPEC_LINUX_PLATFORM: linux/amd64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99"
+      - name: Restore static PHP
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            .php-build-linux/spc
+            .php-build-linux/buildroot
+          key: php-linux-x86_64-${{ hashFiles('crates/speedyspec-php/php-version', 'scripts/build-php.sh', 'scripts/lib/**') }}
+      - name: Build static PHP
+        env:
+          SPEEDYSPEC_ALLOW_HOST_INSTALL: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/linux-php.sh scripts/build-php.sh
+      - name: Package and verify every crate
+        run: scripts/linux-php.sh cargo package --workspace --locked
+
+  # What docs.rs builds: every published crate's docs, with DOCS_RS set and no PHP installed.
   docs:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "No docs checks yet."
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99"
+      - uses: Swatinem/rust-cache@v2
+      # With each crate's own [package.metadata.docs.rs] features: the PHP crates build without `embed` there.
+      - name: Build each crate's docs as docs.rs does
+        run: |
+          cargo metadata --format-version 1 --no-deps --locked > "$RUNNER_TEMP/metadata.json"
+          for c in $(grep -v -e '^#' -e '^$' scripts/publish-crates.txt); do
+            flags="$(jq -r --arg n "$c" '.packages[] | select(.name == $n) | .metadata.docs.rs
+              | [if ."no-default-features" then "--no-default-features" else empty end,
+                 if ."all-features" then "--all-features" else empty end] | join(" ")' "$RUNNER_TEMP/metadata.json")"
+            DOCS_RS=1 RUSTDOCFLAGS="--cfg docsrs -D rustdoc::broken_intra_doc_links" cargo doc --no-deps --locked $flags -p "$c" || exit 1
+          done

@@ -19,19 +19,58 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use ext_php_rs::builders::SapiBuilder;
-use ext_php_rs::embed::{
-    SapiModule, cleanup_sapi_allocations, ext_php_rs_sapi_shutdown, ext_php_rs_sapi_startup,
-};
+use ext_php_rs::alloc::efree;
 use ext_php_rs::ffi::{
-    _efree, _zend_compile_position_ZEND_COMPILE_POSITION_AFTER_OPEN_TAG,
+    _zend_compile_position_ZEND_COMPILE_POSITION_AFTER_OPEN_TAG,
     _zend_compile_position_ZEND_COMPILE_POSITION_AT_OPEN_TAG, ZEND_RESULT_CODE_SUCCESS,
     destroy_op_array, ext_php_rs_compiler_globals, ext_php_rs_executor_globals,
-    ext_php_rs_zend_string_init, ext_php_rs_zend_string_release, php_module_shutdown,
-    php_module_startup, php_request_shutdown, php_request_startup, sapi_shutdown, sapi_startup,
+    ext_php_rs_zend_string_init, ext_php_rs_zend_string_release, sapi_shutdown,
     zend_compile_position, zend_compile_string, zend_destroy_static_vars, zend_execute,
     zend_get_executed_scope, zend_op_array, zend_string, zval,
 };
+use sapi::{
+    SapiModule, cleanup_sapi_allocations, ext_php_rs_sapi_shutdown, php_module_shutdown,
+    php_request_shutdown, php_request_startup,
+};
+
+/// The SAPI and engine start and stop calls, which only ext-php-rs's `embed` feature provides.
+#[cfg(feature = "embed")]
+mod sapi {
+    pub(super) use ext_php_rs::builders::SapiBuilder;
+    pub(super) use ext_php_rs::embed::{
+        SapiModule, cleanup_sapi_allocations, ext_php_rs_sapi_shutdown, ext_php_rs_sapi_startup,
+    };
+    pub(super) use ext_php_rs::ffi::{
+        php_module_shutdown, php_module_startup, php_request_shutdown, php_request_startup,
+        sapi_startup,
+    };
+}
+
+/// Without the `embed` feature (the docs.rs build, whose ext-php-rs bindings lack the embed symbols) no engine can
+/// start: [`Php::boot`] fails before anything here could run, so none of these is ever called.
+#[cfg(not(feature = "embed"))]
+mod sapi {
+    use std::os::raw::c_void;
+
+    pub(super) use ext_php_rs::ffi::sapi_module_struct as SapiModule;
+    use ext_php_rs::ffi::zend_result;
+
+    pub(super) unsafe fn php_request_startup() -> zend_result {
+        unreachable!("no PHP engine without the embed feature")
+    }
+    pub(super) unsafe fn php_request_shutdown(_: *mut c_void) {
+        unreachable!("no PHP engine without the embed feature")
+    }
+    pub(super) unsafe fn php_module_shutdown() {
+        unreachable!("no PHP engine without the embed feature")
+    }
+    pub(super) unsafe fn ext_php_rs_sapi_shutdown() {
+        unreachable!("no PHP engine without the embed feature")
+    }
+    pub(super) unsafe fn cleanup_sapi_allocations(_: *mut SapiModule) {
+        unreachable!("no PHP engine without the embed feature")
+    }
+}
 use ext_php_rs::types::Zval;
 use speedyspec_hooks::{Key, SharedHooks, Value};
 
@@ -193,42 +232,7 @@ impl Php {
             ));
         }
 
-        let sapi = SapiBuilder::new("speedyspec", "SpeedySpec")
-            .ub_write_function(ub_write)
-            .flush_function(flush)
-            .log_message_function(log_message)
-            .send_headers_function(crate::web::send_headers)
-            .read_post_function(crate::web::read_post)
-            .read_cookies_function(crate::web::read_cookies)
-            .register_server_variables_function(crate::web::register_server_variables)
-            .php_ini_ignore(1)
-            .build()
-            .map_err(|e| PhpError::Boot(format!("building the SAPI: {e}")))?;
-        // PHP copies the struct, but cleanup_sapi_allocations needs the
-        // original after shutdown, so it lives on the heap until Drop. If
-        // startup fails it is leaked: a half-started engine cannot be shut
-        // down safely, and the process is about to report the error and exit.
-        let sapi = Box::into_raw(Box::new(sapi));
-
-        // SAFETY: the documented SAPI start sequence, run once per process
-        // (guarded by BOOTED) on this thread. `sapi_startup` clears
-        // `ini_entries`, so it is set between the two startup calls, as
-        // php-src's own SAPIs do. INI_ENTRIES is 'static.
-        unsafe {
-            ext_php_rs_sapi_startup();
-            sapi_startup(sapi);
-            (*sapi).ini_entries = EXTRA_INI.get().copied().unwrap_or(INI_ENTRIES).as_ptr();
-            crate::area::install(options.areas);
-            if php_module_startup(sapi, hook_class::module_entry()) != ZEND_RESULT_CODE_SUCCESS {
-                return Err(PhpError::Boot("php_module_startup failed".to_owned()));
-            }
-            if php_request_startup() != ZEND_RESULT_CODE_SUCCESS {
-                return Err(PhpError::Boot("php_request_startup failed".to_owned()));
-            }
-            // As the CLI does; request startup has just reset it.
-            (*ext_php_rs_compiler_globals()).skip_shebang = true;
-            request_started();
-        }
+        let sapi = start_engine(options.areas)?;
 
         // From here on, failing drops `php`, which shuts the engine down.
         let php = Self {
@@ -978,7 +982,7 @@ impl Php {
                 handle_queued_oom();
                 zend_destroy_static_vars(op);
                 destroy_op_array(op);
-                _efree(op.cast());
+                efree(op.cast());
                 op_array.set(ptr::null_mut());
             }
         });
@@ -998,7 +1002,7 @@ impl Php {
                 // SAFETY: `op` was compiled above and not yet destroyed.
                 unsafe {
                     destroy_op_array(op);
-                    _efree(op.cast());
+                    efree(op.cast());
                 }
             });
         }
@@ -1022,6 +1026,59 @@ impl Php {
         }
         value.map_err(|e| PhpError::Conversion(e.to_string()))
     }
+}
+
+/// Builds the SAPI and starts the engine and its first request: the documented SAPI start sequence, which needs
+/// ext-php-rs's `embed` feature.
+#[cfg(feature = "embed")]
+fn start_engine(
+    areas: Vec<std::rc::Rc<dyn crate::NativeArea>>,
+) -> Result<*mut SapiModule, PhpError> {
+    let sapi = sapi::SapiBuilder::new("speedyspec", "SpeedySpec")
+        .ub_write_function(ub_write)
+        .flush_function(flush)
+        .log_message_function(log_message)
+        .send_headers_function(crate::web::send_headers)
+        .read_post_function(crate::web::read_post)
+        .read_cookies_function(crate::web::read_cookies)
+        .register_server_variables_function(crate::web::register_server_variables)
+        .php_ini_ignore(1)
+        .build()
+        .map_err(|e| PhpError::Boot(format!("building the SAPI: {e}")))?;
+    // PHP copies the struct, but cleanup_sapi_allocations needs the
+    // original after shutdown, so it lives on the heap until Drop. If
+    // startup fails it is leaked: a half-started engine cannot be shut
+    // down safely, and the process is about to report the error and exit.
+    let sapi = Box::into_raw(Box::new(sapi));
+
+    // SAFETY: the documented SAPI start sequence, run once per process
+    // (guarded by BOOTED) on this thread. `sapi_startup` clears
+    // `ini_entries`, so it is set between the two startup calls, as
+    // php-src's own SAPIs do. INI_ENTRIES is 'static.
+    unsafe {
+        sapi::ext_php_rs_sapi_startup();
+        sapi::sapi_startup(sapi);
+        (*sapi).ini_entries = EXTRA_INI.get().copied().unwrap_or(INI_ENTRIES).as_ptr();
+        crate::area::install(areas);
+        if sapi::php_module_startup(sapi, hook_class::module_entry()) != ZEND_RESULT_CODE_SUCCESS {
+            return Err(PhpError::Boot("php_module_startup failed".to_owned()));
+        }
+        if php_request_startup() != ZEND_RESULT_CODE_SUCCESS {
+            return Err(PhpError::Boot("php_request_startup failed".to_owned()));
+        }
+        // As the CLI does; request startup has just reset it.
+        (*ext_php_rs_compiler_globals()).skip_shebang = true;
+        request_started();
+    }
+    Ok(sapi)
+}
+
+/// Without the `embed` feature there is no engine to start.
+#[cfg(not(feature = "embed"))]
+fn start_engine(_: Vec<std::rc::Rc<dyn crate::NativeArea>>) -> Result<*mut SapiModule, PhpError> {
+    Err(PhpError::Boot(
+        "speedyspec-php was built without its `embed` feature".to_owned(),
+    ))
 }
 
 impl Drop for Php {

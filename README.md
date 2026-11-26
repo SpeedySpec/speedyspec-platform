@@ -59,7 +59,8 @@ publishes against crates.io.
 ## Building PHP
 
 Five crates link the static PHP: `speedyspec-php`, `speedyspec-php-ext`, `speedyspec-container-php`,
-`speedyspec-compat` and `speedyspec-wp-hooks-php`. Build it once; `.cargo/config.toml` points cargo at it.
+`speedyspec-compat` and `speedyspec-wp-hooks-php`. The tests of `speedyspec-php-port-macros` link it too, through
+`speedyspec-php-ext`. Build it once; `.cargo/config.toml` points cargo at it.
 
 ```bash
 scripts/build-php.sh                         # macOS or Linux, into .php-build/
@@ -71,7 +72,7 @@ Everything else builds and tests without PHP:
 
 ```bash
 cargo test --workspace --exclude speedyspec-php --exclude speedyspec-php-ext --exclude speedyspec-container-php \
-  --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php
+  --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php --exclude speedyspec-php-port-macros
 ```
 
 ## Working on the platform from a consumer

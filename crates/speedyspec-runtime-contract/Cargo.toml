@@ -1,11 +1,21 @@
 [package]
 name = "speedyspec-runtime-contract"
 version = "0.5.0"
-publish = false
 description = "What speedyspec-server and speedyspec-php-runtime agree on: the worker spec, the per-request report and the contract version."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["speedyspec", "php", "runtime", "worker", "contracts"]
+categories = ["web-programming"]
+# The package ships the library only; the tests run in this repository.
+exclude = ["tests/"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.speedyspec]
 seam = "container"

@@ -1,21 +1,31 @@
 [package]
 name = "speedyspec-wp-theme-json-contracts"
 version = "0.1.3"
-publish = false
 description = "WordPress's theme.json contracts: the typed model, the value objects, the schema tables and the ports."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["speedyspec", "wordpress", "theme-json", "themes", "contracts"]
+categories = ["web-programming"]
+# The package ships the library only: the tests run in this repository, and tools/ exports the embedded data.
+exclude = ["tests/", "tools/"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.speedyspec]
 seam = "theme"
 role = "contracts"
 
 [dependencies]
-speedyspec-hooks = { path = "../speedyspec-hooks" }
-speedyspec-wp-kses-contracts = { path = "../speedyspec-wp-kses-contracts" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
+speedyspec-wp-kses-contracts = { path = "../speedyspec-wp-kses-contracts", version = "0.5.0" }
 indexmap = "2"
-speedyspec-php-serialize = { path = "../speedyspec-php-serialize" }
+speedyspec-php-serialize = { path = "../speedyspec-php-serialize", version = "0.2.0" }
 
 [dev-dependencies]
 serde_json = "1"

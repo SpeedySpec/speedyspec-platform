@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The unified operation API's transport contracts.
 //!
 //! Ports a transport (REST, XML-RPC, Abilities, later WebSocket and GraphQL) implements or uses, and the value objects

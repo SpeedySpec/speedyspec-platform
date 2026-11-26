@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The speedyspec_wordpress extension's shared parts.
 //!
 //! - [`php_port`] turns a Rust port trait into a PHP *twin* (an interface with the same methods) and a PHP adapter

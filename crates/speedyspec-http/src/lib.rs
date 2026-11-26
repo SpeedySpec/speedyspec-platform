@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Contracts for HTTP messages, shaped after the PHP-FIG standards.
 //!
 //! The runtime needs one way to represent a request and a response, and one way to pass a request through steps

@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The media reader port and the library-neutral description of a media file.
 //!
 //! WordPress reads audio, video and image facts through getID3, `getimagesize()` and hand-written parsers. SpeedySpec
