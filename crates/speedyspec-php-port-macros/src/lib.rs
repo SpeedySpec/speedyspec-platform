@@ -1,4 +1,6 @@
-#![doc = include_str!("../README.md")]
+// The README is the docs page, but its example runs as a doctest of `speedyspec-php-ext` (the crate whose runtime pieces the generated code calls): a dev-dependency on it
+// would be a cycle, which release-please's cargo-workspace plugin rejects.
+#![cfg_attr(not(doctest), doc = include_str!("../README.md"))]
 //!
 //! ## In detail
 //!

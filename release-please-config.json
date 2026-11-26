@@ -1,0 +1,486 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "rust",
+  "pull-request-title-pattern": "chore: release ${version}",
+  "include-component-in-tag": true,
+  "bump-minor-pre-major": true,
+  "bootstrap-sha": "19fe53b177d7b433e217db6acb08fea882d871a6",
+  "separate-pull-requests": false,
+  "plugins": [
+    {
+      "type": "cargo-workspace"
+    }
+  ],
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance Improvements"
+    },
+    {
+      "type": "refactor",
+      "section": "Code Refactoring"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "build",
+      "section": "Build System"
+    },
+    {
+      "type": "ci",
+      "section": "Continuous Integration"
+    },
+    {
+      "type": "chore",
+      "section": "Miscellaneous Chores",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    }
+  ],
+  "packages": {
+    "crates/speedyspec-abilities-contracts": {
+      "component": "speedyspec-abilities-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-cache": {
+      "component": "speedyspec-cache",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.3.0"
+    },
+    "crates/speedyspec-compat": {
+      "component": "speedyspec-compat",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.10.0"
+    },
+    "crates/speedyspec-container": {
+      "component": "speedyspec-container",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-container-php": {
+      "component": "speedyspec-container-php",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-cqrs": {
+      "component": "speedyspec-cqrs",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-data": {
+      "component": "speedyspec-data",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.3.0"
+    },
+    "crates/speedyspec-fastcgi": {
+      "component": "speedyspec-fastcgi",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-hooks": {
+      "component": "speedyspec-hooks",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-hooks-memory": {
+      "component": "speedyspec-hooks-memory",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-http": {
+      "component": "speedyspec-http",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-native-stage": {
+      "component": "speedyspec-native-stage",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-operation-contracts": {
+      "component": "speedyspec-operation-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-php": {
+      "component": "speedyspec-php",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.8.0"
+    },
+    "crates/speedyspec-php-ext": {
+      "component": "speedyspec-php-ext",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-php-port-macros": {
+      "component": "speedyspec-php-port-macros",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-php-serialize": {
+      "component": "speedyspec-php-serialize",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.3.0"
+    },
+    "crates/speedyspec-port-macros": {
+      "component": "speedyspec-port-macros",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-rest-contracts": {
+      "component": "speedyspec-rest-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-routing": {
+      "component": "speedyspec-routing",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-runtime-contract": {
+      "component": "speedyspec-runtime-contract",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.6.0"
+    },
+    "crates/speedyspec-transport-contracts": {
+      "component": "speedyspec-transport-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-wp-cron-contracts": {
+      "component": "speedyspec-wp-cron-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.5.0"
+    },
+    "crates/speedyspec-wp-crypto-contracts": {
+      "component": "speedyspec-wp-crypto-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.6.0"
+    },
+    "crates/speedyspec-wp-db-contracts": {
+      "component": "speedyspec-wp-db-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0",
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance Improvements"
+        },
+        {
+          "type": "refactor",
+          "section": "Code Refactoring"
+        },
+        {
+          "type": "docs",
+          "section": "Documentation"
+        },
+        {
+          "type": "build",
+          "section": "Build System"
+        },
+        {
+          "type": "ci",
+          "section": "Continuous Integration"
+        },
+        {
+          "type": "chore",
+          "section": "Miscellaneous Chores"
+        },
+        {
+          "type": "test",
+          "section": "Tests",
+          "hidden": true
+        }
+      ]
+    },
+    "crates/speedyspec-wp-hooks": {
+      "component": "speedyspec-wp-hooks",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-wp-hooks-contracts": {
+      "component": "speedyspec-wp-hooks-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0",
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance Improvements"
+        },
+        {
+          "type": "refactor",
+          "section": "Code Refactoring"
+        },
+        {
+          "type": "docs",
+          "section": "Documentation"
+        },
+        {
+          "type": "build",
+          "section": "Build System"
+        },
+        {
+          "type": "ci",
+          "section": "Continuous Integration"
+        },
+        {
+          "type": "chore",
+          "section": "Miscellaneous Chores"
+        },
+        {
+          "type": "test",
+          "section": "Tests",
+          "hidden": true
+        }
+      ]
+    },
+    "crates/speedyspec-wp-hooks-memory": {
+      "component": "speedyspec-wp-hooks-memory",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-wp-hooks-php": {
+      "component": "speedyspec-wp-hooks-php",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-wp-html-split": {
+      "component": "speedyspec-wp-html-split",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-wp-html-syntax": {
+      "component": "speedyspec-wp-html-syntax",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.6.0"
+    },
+    "crates/speedyspec-wp-i18n-contracts": {
+      "component": "speedyspec-wp-i18n-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-wp-kses-contracts": {
+      "component": "speedyspec-wp-kses-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.6.0"
+    },
+    "crates/speedyspec-wp-kses-lexical": {
+      "component": "speedyspec-wp-kses-lexical",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.6.0"
+    },
+    "crates/speedyspec-wp-media-contracts": {
+      "component": "speedyspec-wp-media-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.5.0"
+    },
+    "crates/speedyspec-wp-meta-contracts": {
+      "component": "speedyspec-wp-meta-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0",
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance Improvements"
+        },
+        {
+          "type": "refactor",
+          "section": "Code Refactoring"
+        },
+        {
+          "type": "docs",
+          "section": "Documentation"
+        },
+        {
+          "type": "build",
+          "section": "Build System"
+        },
+        {
+          "type": "ci",
+          "section": "Continuous Integration"
+        },
+        {
+          "type": "chore",
+          "section": "Miscellaneous Chores"
+        },
+        {
+          "type": "test",
+          "section": "Tests",
+          "hidden": true
+        }
+      ]
+    },
+    "crates/speedyspec-wp-object-cache-contracts": {
+      "component": "speedyspec-wp-object-cache-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0",
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance Improvements"
+        },
+        {
+          "type": "refactor",
+          "section": "Code Refactoring"
+        },
+        {
+          "type": "docs",
+          "section": "Documentation"
+        },
+        {
+          "type": "build",
+          "section": "Build System"
+        },
+        {
+          "type": "ci",
+          "section": "Continuous Integration"
+        },
+        {
+          "type": "chore",
+          "section": "Miscellaneous Chores"
+        },
+        {
+          "type": "test",
+          "section": "Tests",
+          "hidden": true
+        }
+      ]
+    },
+    "crates/speedyspec-wp-password-contracts": {
+      "component": "speedyspec-wp-password-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.4.0"
+    },
+    "crates/speedyspec-wp-posts-contracts": {
+      "component": "speedyspec-wp-posts-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0",
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance Improvements"
+        },
+        {
+          "type": "refactor",
+          "section": "Code Refactoring"
+        },
+        {
+          "type": "docs",
+          "section": "Documentation"
+        },
+        {
+          "type": "build",
+          "section": "Build System"
+        },
+        {
+          "type": "ci",
+          "section": "Continuous Integration"
+        },
+        {
+          "type": "chore",
+          "section": "Miscellaneous Chores"
+        },
+        {
+          "type": "test",
+          "section": "Tests",
+          "hidden": true
+        }
+      ]
+    },
+    "crates/speedyspec-wp-shortcode-contracts": {
+      "component": "speedyspec-wp-shortcode-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.6.0"
+    },
+    "crates/speedyspec-wp-text-contracts": {
+      "component": "speedyspec-wp-text-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.6.0"
+    },
+    "crates/speedyspec-wp-text-diff": {
+      "component": "speedyspec-wp-text-diff",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.3.0"
+    },
+    "crates/speedyspec-wp-text-diff-contracts": {
+      "component": "speedyspec-wp-text-diff-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.3.0"
+    },
+    "crates/speedyspec-wp-theme-json-contracts": {
+      "component": "speedyspec-wp-theme-json-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    },
+    "crates/speedyspec-wp-token-map": {
+      "component": "speedyspec-wp-token-map",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.6.0"
+    },
+    "crates/speedyspec-wp-utf8": {
+      "component": "speedyspec-wp-utf8",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.6.0"
+    },
+    "crates/speedyspec-xmlrpc-contracts": {
+      "component": "speedyspec-xmlrpc-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.2.0"
+    }
+  }
+}

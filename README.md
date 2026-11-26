@@ -83,6 +83,27 @@ them, run `scripts/platform-local.sh <platform-checkout>` there. It writes a git
 `cargo --config platform.local.toml …`. A `[patch]` for a `speedyspec-*` crate is never committed; the consumers'
 CI fails if one is.
 
+## Releases
+
+Every crate has its own version, `CHANGELOG.md` and GitHub release, tagged `speedyspec-<crate>-v<version>`.
+release-please (`release-please-config.json`, with the `cargo-workspace` plugin) keeps one release pull request open
+on `main`, built from Conventional Commits: `feat` bumps a crate's minor version while it is 0.x, `fix` and the rest its
+patch, and a breaking change (`feat!:` or a `BREAKING CHANGE:` footer) its minor. When a crate is released, its
+dependents' requirements on it are bumped too. Merging the release pull request tags the releases, and
+`.github/workflows/release.yml` publishes every crate in `scripts/publish-crates.txt` whose new version crates.io
+lacks, in that order (`scripts/publish-pending.sh`). Changelogs list features, bug fixes, performance, refactoring,
+documentation, build and CI commits; `chore` and `test` commits are left out.
+
+**PHP-observable changes.** The runtime promises SpeedySpec 1 users WordPress's PHP-observable behaviour, so the
+server must not take a platform change that alters what PHP code can see (a return value, a hook's arguments or
+order, an error) without a departures-register entry, or before a SpeedySpec major. Flag such a commit twice:
+
+- a `PHP-Observable:` footer saying what PHP sees differently, so `git log --grep '^PHP-Observable:'` finds it; and
+- `PHP-observable:` at the start of the subject's description, for example
+  `fix(wp-hooks): PHP-observable: remove_filter returns false for an unknown priority`, because release-please
+  copies only the subject (and `BREAKING CHANGE` notes) into the changelog. That is how the server session sees it in
+  the bump pull request.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

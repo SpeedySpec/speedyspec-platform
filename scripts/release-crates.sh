@@ -7,7 +7,9 @@
 #   scripts/release-crates.sh check <metadata.json>
 #       Fails, with one line per problem, unless every listed name is a workspace crate that may be published, every
 #       other crate sets `publish = false`, and a listed crate's normal and build path dependencies are all listed and
-#       carry a version (a published crate can only depend on published ones).
+#       carry a version (a published crate can only depend on published ones). It also fails on a cycle among the
+#       workspace crates' path dependencies of any kind, dev-dependencies included: release-please's cargo-workspace
+#       plugin counts those, and rejects a cycle.
 #   scripts/release-crates.sh pending <metadata.json>
 #       Names the listed crates, in publishing order, whose workspace version crates.io does not have yet: what a
 #       release publishes. A version already there is never published again, so a release that failed part-way can be
@@ -48,7 +50,18 @@ case "$command" in
                           elif $d.req == "*" then "\($p.name) depends on \($d.name) without a version"
                           else empty end)
                   elif $p.publish != [] then "\($p.name) must set publish = false"
-                  else empty end)
+                  else empty end),
+              # Every crate a crate reaches through path dependencies of any kind.
+              ((.packages | map({key: .name, value: [.dependencies[] | select(.path != null) | .name]}) | from_entries)
+                as $graph
+                | def reaches: {seen: [.], frontier: [.]}
+                    | until(.frontier == [];
+                        ((.frontier | map($graph[.] // []) | add // []) | unique) as $next
+                        | ($next - .seen) as $new | .seen += $new | .frontier = $new)
+                    | .seen;
+                .packages[] | . as $p | .dependencies[] | select(.path != null)
+                | select(.name | reaches | index($p.name) != null)
+                | "\($p.name) depends on \(.name) (\(.kind // "normal")), which depends back on it: release-please rejects the cycle")
         ' "$metadata")"
         if [ -n "$problems" ]; then
             printf '%s\n' "$problems" >&2
