@@ -44,7 +44,7 @@ jobs:
       # RELEASE_TOKEN (optional) is a fine-grained token for this repository with Contents and Pull requests set to
       # read and write. A release pull request opened with GITHUB_TOKEN doesn't trigger CI; one opened with
       # RELEASE_TOKEN does.
-      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
