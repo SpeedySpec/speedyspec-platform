@@ -59,18 +59,6 @@ jobs:
           cargo test --workspace --locked --target ${{ matrix.target }}
           --exclude speedyspec-php --exclude speedyspec-php-ext --exclude speedyspec-container-php
           --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php
-          --exclude speedyspec-wp-text-diff --exclude speedyspec-wp-token-map --exclude speedyspec-wp-theme-json-contracts
-      # Until the readiness PR moves the server-only tests: these three crates have tests that read data only the
-      # server holds (compat/text-diff, tests/php/data/html5-entities, the theme.json areas release), so only their
-      # other tests run here.
-      - run: >-
-          cargo test --locked --target ${{ matrix.target }}
-          -p speedyspec-wp-text-diff -p speedyspec-wp-token-map -p speedyspec-wp-theme-json-contracts --lib
-          -- --skip the_embedded_files_come_from_the_theme_json_areas_release
-      - run: cargo test --locked --target ${{ matrix.target }} -p speedyspec-wp-token-map --test map
-      - run: >-
-          cargo test --locked --target ${{ matrix.target }}
-          -p speedyspec-wp-text-diff -p speedyspec-wp-token-map -p speedyspec-wp-theme-json-contracts --doc
 
   # The static PHP (scripts/build-php.sh) and the five crates that embed it.
   php:
@@ -131,11 +119,8 @@ jobs:
       - name: Test with php
         run: >-
           ${{ matrix.run }} cargo test --locked
-          -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-wp-hooks-php
-      # Until the readiness PR moves the server-only tests: tests/bytes.rs runs the formatting area, whose catalogue
-      # (compat/formatting) stays in the server.
-      - name: Test speedyspec-compat with php
-        run: ${{ matrix.run }} cargo test --locked -p speedyspec-compat --lib --test format
+          -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-compat
+          -p speedyspec-wp-hooks-php
 
   # The publish list matches the workspace, and the platform is closed: nothing outside this repository and crates.io.
   crates:

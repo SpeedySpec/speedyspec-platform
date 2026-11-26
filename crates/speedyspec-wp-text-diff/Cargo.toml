@@ -20,11 +20,4 @@ speedyspec-hooks = { path = "../speedyspec-hooks" }
 speedyspec-wp-text-diff-contracts = { path = "../speedyspec-wp-text-diff-contracts" }
 
 [dev-dependencies]
-base64 = "0.22"
-criterion = { version = "0.8", default-features = false }
 proptest = "1"
-serde_json = { version = "1", features = ["float_roundtrip"] }
-
-[[bench]]
-name = "text_diff"
-harness = false

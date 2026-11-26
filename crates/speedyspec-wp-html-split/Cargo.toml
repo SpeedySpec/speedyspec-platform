@@ -13,11 +13,3 @@ role = "implementation"
 
 [dependencies]
 memchr = "2.8"
-
-[dev-dependencies]
-criterion = "0.5"
-speedyspec-wp-text-corpus = { path = "../speedyspec-wp-text-corpus" }
-
-[[bench]]
-name = "split"
-harness = false
