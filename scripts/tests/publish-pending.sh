@@ -36,7 +36,8 @@ for tag in speedyspec-aaaa-v0.2.0 speedyspec-bbbb-v0.3.0 speedyspec-cccc-v0.4.0;
 
 # The fake records each attempt in $work/attempts, and behaves as $FAKE_MODE says for speedyspec-bbbb:
 # `429` and `429-dated` answer Too Many Requests on the first attempt only; `verify` always fails verification;
-# `exists` says the version is already on crates.io; `version-429` fails with a 429 that isn't an HTTP status.
+# `exists` says the version is already on crates.io; `version-429` fails with a 429 that isn't an HTTP status;
+# `network` and `502` fail with a connection reset or a Bad Gateway on the first attempt only.
 cat >"$work/fake-publish" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -56,6 +57,22 @@ if [ "$crate" = speedyspec-bbbb ]; then
             if [ ! -e "$FAKE_WORK/limited" ]; then
                 touch "$FAKE_WORK/limited"
                 echo "Caused by: the remote server responded with an error (status 429 Too Many Requests): You have published too many new crates in a short period of time. Please try again after Wed, 26 Nov 2025 12:00:00 GMT and see https://crates.io/docs/rate-limits for more details." >&2
+                exit 101
+            fi
+            ;;
+        network)
+            if [ ! -e "$FAKE_WORK/limited" ]; then
+                touch "$FAKE_WORK/limited"
+                echo "error: failed to publish speedyspec-bbbb v0.3.0 to registry at https://crates.io" >&2
+                echo "Caused by:" >&2
+                echo "  [35] SSL connect error (Recv failure: Connection reset by peer)" >&2
+                exit 101
+            fi
+            ;;
+        502)
+            if [ ! -e "$FAKE_WORK/limited" ]; then
+                touch "$FAKE_WORK/limited"
+                echo "Caused by: the remote server responded with an error (status 502 Bad Gateway): upstream" >&2
                 exit 101
             fi
             ;;
@@ -84,7 +101,7 @@ run() {
     rm -f "$work/attempts" "$work/limited"
     touch "$work/attempts"
     status=0
-    output="$(PUBLISH_BACKOFF=0 PUBLISH_RETRIES=3 "$script" "$work/metadata.json" 2>&1)" || status=$?
+    output="$(PUBLISH_BACKOFF=0 PUBLISH_NET_BACKOFF=0 PUBLISH_RETRIES=3 "$script" "$work/metadata.json" 2>&1)" || status=$?
 }
 
 empty_index="$work/empty-index"
@@ -118,6 +135,20 @@ elif ! grep -q "rate-limited publishing speedyspec-bbbb: waiting ${want_wait}s (
 else
     echo "ok: a 429's retry time is honoured (${want_wait}s)"
 fi
+
+# 1c. A network failure or a 5xx on the second crate is retried after $PUBLISH_NET_BACKOFF (0) seconds.
+for mode in network 502; do
+    run "$mode" "$empty_index"
+    if [ "$status" -ne 0 ] || [ "$(grep -c '^published ' <<<"$output")" -ne 3 ]; then
+        fail "$mode: exit $status (output: $output)"
+    elif ! grep -q 'network error publishing speedyspec-bbbb: waiting 0s (retry 1 of 3)' <<<"$output"; then
+        fail "$mode: no network retry line (output: $output)"
+    elif [ "$(cut -d' ' -f1 "$work/attempts" | tr '\n' ' ')" != "speedyspec-aaaa speedyspec-bbbb speedyspec-bbbb speedyspec-cccc " ]; then
+        fail "$mode: attempts $(cut -d' ' -f1 "$work/attempts" | tr '\n' ' ')"
+    else
+        echo "ok: $mode is retried"
+    fi
+done
 
 # 2. Any other failure stops the run: exit 1, and the third crate is never attempted.
 run verify "$empty_index"

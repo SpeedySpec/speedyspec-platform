@@ -13,7 +13,9 @@
 # Prints `published <crate> <version>` per crate. crates.io rate-limits publishing (new crates especially): on an
 # answer with cargo's `status 429` error line, it waits until the time crates.io says to try again after (when GNU
 # date can read it), or else $PUBLISH_BACKOFF seconds (default 600, crates.io's refill interval for new crates), and
-# tries the same crate again, up to $PUBLISH_RETRIES times (default 36). crates.io saying the exact version already
+# tries the same crate again, up to $PUBLISH_RETRIES times (default 36). A network failure (one of curl's numbered
+# errors, such as `[35] SSL connect error`) or a 5xx answer is retried the same way after $PUBLISH_NET_BACKOFF seconds
+# (default 30), sharing the same retry count. crates.io saying the exact version already
 # exists (another run got there first) counts as published. Any other failure stops the run, so nothing publishes
 # ahead of a crate it may depend on. A run that stopped can be run again: what is already on crates.io is no longer
 # pending.
@@ -29,6 +31,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="${SPEEDYSPEC_REPO:-$(cd "$here/.." && pwd)}"
 backoff="${PUBLISH_BACKOFF:-600}"
 retries="${PUBLISH_RETRIES:-36}"
+net_backoff="${PUBLISH_NET_BACKOFF:-30}"
 
 publish() {
     if [ -n "${CARGO_PUBLISH:-}" ]; then
@@ -97,6 +100,15 @@ for name in $pending; do
             wait="$(retry_wait "$log")"
             echo "rate-limited publishing $name: waiting ${wait}s (retry $attempt of $retries)"
             sleep "$wait"
+            continue
+        fi
+        # A transient network failure: curl's numbered error (e.g. "[35] SSL connect error (Recv failure: Connection
+        # reset by peer)") or a 5xx answer ("status 502 Bad Gateway"). If the upload landed anyway, the retry finds the
+        # version already uploaded, below.
+        if grep -q -E '^ *\[[0-9]+\] |status 5[0-9][0-9]([^0-9]|$)' "$log" && [ "$attempt" -lt "$retries" ]; then
+            attempt=$((attempt + 1))
+            echo "network error publishing $name: waiting ${net_backoff}s (retry $attempt of $retries)"
+            sleep "$net_backoff"
             continue
         fi
         # This exact version is already on crates.io (cargo: "crate <name>@<version> already exists on crates.io
