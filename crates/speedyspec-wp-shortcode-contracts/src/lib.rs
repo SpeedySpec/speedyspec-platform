@@ -19,11 +19,13 @@ pub use atts::{AttKey, AttsParse, ParsedAtts};
 pub use error::{ShortcodeError, Thrown};
 pub use matches::{MatchGroups, ShortcodeMatch};
 pub use ports::{
-    AttsParser, ContextGuard, DiagnosticMessage, Diagnostics, HtmlSplitter, KsesAttributes, PhpStrings,
-    ShortcodeFilters, ShortcodeHandler, ShortcodeMatches, ShortcodeRegistry, ShortcodeScanner,
-    ShortcodeTagNames,
+    AttsParser, ContextGuard, DiagnosticMessage, Diagnostics, HtmlSplitter, KsesAttributes,
+    PhpStrings, ShortcodeFilters, ShortcodeHandler, ShortcodeMatches, ShortcodeRegistry,
+    ShortcodeScanner, ShortcodeTagNames,
 };
-pub use regex_source::{get_shortcode_atts_regex, get_shortcode_regex, preg_quote, shortcode_tag_alternation};
+pub use regex_source::{
+    get_shortcode_atts_regex, get_shortcode_regex, preg_quote, shortcode_tag_alternation,
+};
 pub use tag::{InvalidTagName, TagName, TagSet};
 
 /// A PHP-shaped value, as the Hook API carries it.

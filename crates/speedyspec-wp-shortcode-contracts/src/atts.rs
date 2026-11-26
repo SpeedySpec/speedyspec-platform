@@ -83,7 +83,9 @@ impl ParsedAtts {
                 .map(|(k, v)| {
                     let key = match k {
                         AttKey::Int(i) => crate::PhpKey::Int(*i),
-                        AttKey::Str(s) => crate::PhpKey::Str(String::from_utf8_lossy(s).into_owned()),
+                        AttKey::Str(s) => {
+                            crate::PhpKey::Str(String::from_utf8_lossy(s).into_owned())
+                        }
                     };
                     (key, crate::php_bytes(v.clone()))
                 })

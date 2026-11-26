@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use crate::{AttsParse, ParsedAtts, PhpKey, PhpValue, ShortcodeError, ShortcodeMatch, TagName, TagSet};
+use crate::{
+    AttsParse, ParsedAtts, PhpKey, PhpValue, ShortcodeError, ShortcodeMatch, TagName, TagSet,
+};
 
 /// One registered tag's callback: `call_user_func( $callback, $attr, $content, $tag )`.
 pub trait ShortcodeHandler {
@@ -9,7 +11,12 @@ pub trait ShortcodeHandler {
     /// # Errors
     ///
     /// [`ShortcodeError::Handler`] when the handler fails or throws.
-    fn call(&self, atts: &ParsedAtts, content: Option<&[u8]>, tag: &[u8]) -> Result<PhpValue, ShortcodeError>;
+    fn call(
+        &self,
+        atts: &ParsedAtts,
+        content: Option<&[u8]>,
+        tag: &[u8],
+    ) -> Result<PhpValue, ShortcodeError>;
 
     /// `is_callable()` at call time. Rust handlers are always callable.
     fn is_callable(&self) -> bool {
@@ -50,7 +57,8 @@ pub trait ShortcodeRegistry: ShortcodeTagNames {
 }
 
 /// The matches one scan yields, left to right and without overlap.
-pub type ShortcodeMatches<'h> = Box<dyn Iterator<Item = Result<ShortcodeMatch, ShortcodeError>> + 'h>;
+pub type ShortcodeMatches<'h> =
+    Box<dyn Iterator<Item = Result<ShortcodeMatch, ShortcodeError>> + 'h>;
 
 /// A Strategy for finding matches of `get_shortcode_regex( $tagnames )`, as `preg_replace_callback()` finds them.
 pub trait ShortcodeScanner {
@@ -89,7 +97,12 @@ pub trait ShortcodeFilters {
     /// # Errors
     ///
     /// [`ShortcodeError::Filter`] when a callback fails or throws; so for every method here.
-    fn pre_do_shortcode_tag(&self, tag: &[u8], attr: &PhpValue, m: &PhpValue) -> Result<PhpValue, ShortcodeError>;
+    fn pre_do_shortcode_tag(
+        &self,
+        tag: &[u8],
+        attr: &PhpValue,
+        m: &PhpValue,
+    ) -> Result<PhpValue, ShortcodeError>;
     /// `apply_filters( 'do_shortcode_tag', $output, $tag, $attr, $m )`.
     fn do_shortcode_tag(
         &self,
@@ -107,7 +120,11 @@ pub trait ShortcodeFilters {
         atts: &PhpValue,
     ) -> Result<PhpValue, ShortcodeError>;
     /// `apply_filters( 'strip_shortcodes_tagnames', $tags_to_remove, $content )`.
-    fn strip_shortcodes_tagnames(&self, tags: PhpValue, content: &[u8]) -> Result<PhpValue, ShortcodeError>;
+    fn strip_shortcodes_tagnames(
+        &self,
+        tags: PhpValue,
+        content: &[u8],
+    ) -> Result<PhpValue, ShortcodeError>;
     /// Adds `_filter_do_shortcode_context` to `wp_get_attachment_image_context` unless it is already there.
     fn enter_do_shortcode_context(&self) -> Result<ContextGuard, ShortcodeError>;
     /// Removes the filter if `guard` added it. Not called when the scan fails, as WordPress leaves it attached.
@@ -131,7 +148,12 @@ pub trait Diagnostics {
     /// # Errors
     ///
     /// What a listener or error handler threw; so for every method here.
-    fn doing_it_wrong(&self, function: &str, message: DiagnosticMessage, version: &str) -> Result<(), ShortcodeError>;
+    fn doing_it_wrong(
+        &self,
+        function: &str,
+        message: DiagnosticMessage,
+        version: &str,
+    ) -> Result<(), ShortcodeError>;
     /// PHP's E_DEPRECATED for passing `null` as `$subject` to `function`.
     fn deprecated_null_subject(&self, function: &str) -> Result<(), ShortcodeError>;
     /// PHP's E_WARNING for reading a missing array key, where WordPress reads one without `??`.
