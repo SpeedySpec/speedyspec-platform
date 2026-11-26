@@ -27,8 +27,16 @@ cat >"$work/metadata.json" <<'JSON'
 JSON
 export SPEEDYSPEC_REPO="$repo"
 
+# The repository is a git checkout, with a release tag for each crate's version at HEAD.
+git() { command git -C "$repo" -c user.name=test -c user.email=test@example.invalid -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
+git init -q
+git add scripts
+git commit -q -m release
+for tag in speedyspec-aaaa-v0.2.0 speedyspec-bbbb-v0.3.0 speedyspec-cccc-v0.4.0; do git tag "$tag"; done
+
 # The fake records each attempt in $work/attempts, and behaves as $FAKE_MODE says for speedyspec-bbbb:
-# `429` answers Too Many Requests on the first attempt only; `verify` always fails verification.
+# `429` and `429-dated` answer Too Many Requests on the first attempt only; `verify` always fails verification;
+# `exists` says the version is already on crates.io; `version-429` fails with a 429 that isn't an HTTP status.
 cat >"$work/fake-publish" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -50,6 +58,14 @@ if [ "$crate" = speedyspec-bbbb ]; then
                 echo "Caused by: the remote server responded with an error (status 429 Too Many Requests): You have published too many new crates in a short period of time. Please try again after Wed, 26 Nov 2025 12:00:00 GMT and see https://crates.io/docs/rate-limits for more details." >&2
                 exit 101
             fi
+            ;;
+        exists)
+            echo "error: crate speedyspec-bbbb@0.3.0 already exists on crates.io index" >&2
+            exit 101
+            ;;
+        version-429)
+            echo "error: failed to select a version for the requirement \`speedyspec-aaaa = \"^0.429.0\"\`" >&2
+            exit 101
             ;;
         verify)
             echo "error: failed to verify package tarball" >&2
@@ -130,7 +146,53 @@ else
     echo "ok: a published version is skipped"
 fi
 
-# 4. Nothing pending: nothing is attempted, and it says so.
+# 5. crates.io already has the exact version: it counts as published, and the run goes on.
+run exists "$empty_index"
+if [ "$status" -ne 0 ]; then
+    fail "exists: exit $status (output: $output)"
+elif ! grep -q '^published speedyspec-bbbb 0.3.0 (already on crates.io)$' <<<"$output"; then
+    fail "exists: no already-published line (output: $output)"
+elif ! grep -q '^published speedyspec-cccc 0.4.0$' <<<"$output"; then
+    fail "exists: speedyspec-cccc not published (output: $output)"
+else
+    echo "ok: a version crates.io already has counts as published"
+fi
+
+# 6. A "429" that isn't cargo's HTTP status line is an ordinary failure: no retry.
+run version-429 "$empty_index"
+if [ "$status" -ne 1 ] || grep -q 'rate-limited' <<<"$output" || [ "$(grep -c '^speedyspec-bbbb ' "$work/attempts")" -ne 1 ]; then
+    fail "version-429: exit $status, attempts $(tr '\n' ' ' <"$work/attempts") (output: $output)"
+else
+    echo "ok: only cargo's status 429 line is a rate limit"
+fi
+
+# 7. A pending crate without its release tag is refused: nothing publishes, and the error names it.
+git tag -d speedyspec-bbbb-v0.3.0 >/dev/null
+run none "$empty_index"
+if [ "$status" -ne 1 ] || [ -s "$work/attempts" ]; then
+    fail "untagged: exit $status, attempts $(tr '\n' ' ' <"$work/attempts")"
+elif ! grep -q 'speedyspec-bbbb 0.3.0 is not released: no tag speedyspec-bbbb-v0.3.0' <<<"$output"; then
+    fail "untagged: no error naming speedyspec-bbbb (output: $output)"
+else
+    echo "ok: an untagged pending crate is refused"
+fi
+
+# 8. A tag that isn't HEAD or an ancestor of it is refused too.
+git checkout -q -b side
+git commit -q --allow-empty -m side
+git tag speedyspec-bbbb-v0.3.0
+git checkout -q -
+run none "$empty_index"
+if [ "$status" -ne 1 ] || [ -s "$work/attempts" ]; then
+    fail "side tag: exit $status, attempts $(tr '\n' ' ' <"$work/attempts")"
+elif ! grep -q 'tag speedyspec-bbbb-v0.3.0 is not HEAD or an ancestor of it' <<<"$output"; then
+    fail "side tag: no error naming the tag (output: $output)"
+else
+    echo "ok: a tag off HEAD's history is refused"
+fi
+git tag -f speedyspec-bbbb-v0.3.0 HEAD >/dev/null
+
+# 9. Nothing pending: nothing is attempted, and it says so.
 for c in bbbb cccc; do
     echo "{\"name\":\"speedyspec-$c\",\"vers\":\"$(jq -r --arg n "speedyspec-$c" '.packages[] | select(.name == $n) | .version' "$work/metadata.json")\"}" >"$index/sp/ee/speedyspec-$c"
 done
