@@ -43,7 +43,15 @@ impl fmt::Display for MetadataError {
     }
 }
 
-impl std::error::Error for MetadataError {}
+impl std::error::Error for MetadataError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            MetadataError::Hook(e) => Some(e),
+            MetadataError::Cache(e) => Some(e),
+            MetadataError::Db(_) => None,
+        }
+    }
+}
 
 impl From<HookError> for MetadataError {
     fn from(e: HookError) -> Self {

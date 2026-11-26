@@ -101,7 +101,7 @@ impl MetaKeys for Dummy {
     fn keys(&self, _: &str, _: &str) -> Vec<RegisteredMetaKey> {
         Vec::new()
     }
-    fn get(&self, object_type: &str, subtype: &str, key: &MetaKey) -> Option<RegisteredMetaKey> {
+    fn find(&self, object_type: &str, subtype: &str, key: &MetaKey) -> Option<RegisteredMetaKey> {
         Some(RegisteredMetaKey {
             object_type: object_type.to_string(),
             subtype: subtype.to_string(),
@@ -130,7 +130,7 @@ fn the_traits_are_object_safe_and_callable() {
             .unwrap(),
         UpdateOutcome::Added(MetaId(2))
     );
-    assert!(keys.get("post", "", &key).is_some());
+    assert!(keys.find("post", "", &key).is_some());
     assert!(!installing.installing());
 }
 
@@ -152,7 +152,7 @@ fn errors_convert_into_their_variants() {
 
 #[test]
 fn a_registered_key_reads_its_args() {
-    let k = MetaKeys::get(&Dummy, "post", "page", &MetaKey::new("k")).unwrap();
+    let k = MetaKeys::find(&Dummy, "post", "page", &MetaKey::new("k")).unwrap();
     assert!(!k.single());
     assert!(k.default().is_none());
 }

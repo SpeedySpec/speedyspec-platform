@@ -37,5 +37,5 @@ pub trait MetaKeys {
     /// `get_registered_meta_keys()`: every key registered for `object_type` and `subtype`.
     fn keys(&self, object_type: &str, subtype: &str) -> Vec<RegisteredMetaKey>;
     /// The entry for one key, `None` when it is not registered for `object_type` and `subtype`.
-    fn get(&self, object_type: &str, subtype: &str, key: &MetaKey) -> Option<RegisteredMetaKey>;
+    fn find(&self, object_type: &str, subtype: &str, key: &MetaKey) -> Option<RegisteredMetaKey>;
 }

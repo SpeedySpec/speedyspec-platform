@@ -67,8 +67,9 @@ pub trait Metadata {
         single: bool,
     ) -> Result<PhpValue, MetadataError>;
 
-    /// `get_metadata_raw()`: as `get()` but with no default, and `None` where WordPress returns `null`
-    /// (a filter short-circuit, or a bad object id).
+    /// `get_metadata_raw()`: as `get()` but with no default. `None` where WordPress returns `null` (nothing stored,
+    /// and no short-circuit answer); `Some(PhpValue::Bool(false))` where it returns `false` (an empty type or a
+    /// non-positive object id).
     fn get_raw(
         &self,
         meta_type: &MetaType,
@@ -110,7 +111,7 @@ pub trait Metadata {
     fn delete_by_mid(&self, meta_type: &MetaType, mid: MetaId) -> Result<bool, MetadataError>;
 
     /// `update_meta_cache()`: fills the cache for `objects`; the cache array WordPress returns, `None` when it
-    /// returns `false`.
+    /// returns `false` (an unknown meta type, or no valid object ids).
     fn update_cache(
         &self,
         meta_type: &MetaType,
