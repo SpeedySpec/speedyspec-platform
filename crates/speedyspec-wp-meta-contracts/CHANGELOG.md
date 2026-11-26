@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-meta-contracts-v0.2.0...speedyspec-wp-meta-contracts-v0.3.0) (2026-11-26)
+
+
+### Features
+
+* **meta-contracts:** the Metadata surface and the registered-keys read port ([#12](https://github.com/SpeedySpec/speedyspec-platform/issues/12)) ([978df4e](https://github.com/SpeedySpec/speedyspec-platform/commit/978df4e2e35e03cabc7fbce4acabda99cfe2abb7))
+
 ## [0.2.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-meta-contracts-v0.1.0...speedyspec-wp-meta-contracts-v0.2.0) (2026-11-26)
 
 

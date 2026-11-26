@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-compat-v0.10.0...speedyspec-compat-v0.10.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **compat:** record any area that brings its own setup.php ([#13](https://github.com/SpeedySpec/speedyspec-platform/issues/13)) ([1bddbd3](https://github.com/SpeedySpec/speedyspec-platform/commit/1bddbd36d05f9b9800ce142ca1438340c6a78394))
+
 ## [0.10.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-compat-v0.9.0...speedyspec-compat-v0.10.0) (2026-11-26)
 
 

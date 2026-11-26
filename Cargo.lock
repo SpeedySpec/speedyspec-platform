@@ -1732,7 +1732,7 @@ version = "0.3.0"
 
 [[package]]
 name = "speedyspec-compat"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "flate2",
  "serde",
@@ -1956,7 +1956,7 @@ dependencies = [
 
 [[package]]
 name = "speedyspec-wp-hooks-php"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde_json",
  "sha2 0.10.9",
@@ -2018,7 +2018,7 @@ version = "0.5.0"
 
 [[package]]
 name = "speedyspec-wp-meta-contracts"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "speedyspec-php-serialize",
  "speedyspec-wp-hooks-contracts",

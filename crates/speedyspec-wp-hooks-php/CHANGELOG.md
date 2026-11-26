@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.2.1](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-hooks-php-v0.2.0...speedyspec-wp-hooks-php-v0.2.1) (2026-11-26)
+
 ## [0.2.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-hooks-php-v0.1.10...speedyspec-wp-hooks-php-v0.2.0) (2026-11-26)
 
 
