@@ -138,6 +138,8 @@ jobs:
         run: scripts/release-crates.sh check "$RUNNER_TEMP/metadata.json"
       - name: Test the closure check
         run: bash scripts/tests/platform-closure.sh
+      - name: Test the publish script
+        run: bash scripts/tests/publish-pending.sh
       # With dependencies: a [patch] or [replace] shows only in the resolved graph.
       - name: Check the closure
         run: |

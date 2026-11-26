@@ -1,0 +1,82 @@
+name: release
+
+# release-please keeps one release pull request open on main, with a version, CHANGELOG.md and GitHub release per
+# crate (tagged speedyspec-<crate>-v<version>); the cargo-workspace plugin bumps the requirements of a released
+# crate's dependents too. Merging that pull request creates the tags and releases, and the publish job then publishes
+# every listed crate whose new version crates.io lacks, in scripts/publish-crates.txt order.
+#
+# Pull requests never run this workflow: only pushes to main and a manual dispatch do, and the publish job runs only
+# when release-please has just created releases, or when dispatched with a release tag. A dispatch with a tag finishes
+# a publish that stopped part-way (a rate limit outlasting the job, say): versions already on crates.io are skipped.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing release tag whose commit is published (for example speedyspec-hooks-v0.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+    steps:
+      # RELEASE_TOKEN (optional) is a fine-grained token for this repository with Contents and Pull requests set to
+      # read and write. A release pull request opened with GITHUB_TOKEN doesn't trigger CI; one opened with
+      # RELEASE_TOKEN does.
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    # On the push that merged a release pull request, or on a dispatch with a tag (release-please is skipped then).
+    if: >-
+      always() && !cancelled() &&
+      ((github.event_name == 'push' && needs.release-please.result == 'success' &&
+        needs.release-please.outputs.releases_created == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
+    runs-on: ubuntu-latest
+    # crates.io lets an account publish 5 new crates at once, then one every 10 minutes: the first release (35 new
+    # crates) takes about 5 hours. If it runs out of time, dispatch again with the same tag.
+    timeout-minutes: 350
+    concurrency:
+      group: crates-publish
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The release commit (the merged release pull request) on a push; the tag on a dispatch.
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.sha }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99"
+      - name: Check the list
+        run: |
+          cargo metadata --format-version 1 --no-deps --locked > "$RUNNER_TEMP/metadata.json"
+          scripts/release-crates.sh check "$RUNNER_TEMP/metadata.json"
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+              echo "::error::the CARGO_REGISTRY_TOKEN secret is not set: nothing is published" >&2
+              exit 1
+          fi
+          scripts/publish-pending.sh "$RUNNER_TEMP/metadata.json"
