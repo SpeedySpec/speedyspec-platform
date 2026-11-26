@@ -106,7 +106,7 @@ jobs:
           toolchain: "1.99"
           components: clippy
       - name: Cache static PHP
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ${{ matrix.php-build }}/spc
