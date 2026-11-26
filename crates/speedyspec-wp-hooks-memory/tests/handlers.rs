@@ -168,11 +168,7 @@ fn string_numeric_priorities_sort_numerically() {
             .unwrap()
             .unwrap();
     }
-    assert_eq!(
-        w.apply("f", "x"),
-        s("x-a-c-b"),
-        "recorded from WordPress"
-    );
+    assert_eq!(w.apply("f", "x"), s("x-a-c-b"), "recorded from WordPress");
     let has = w
         .queries
         .ask(HasFilter {

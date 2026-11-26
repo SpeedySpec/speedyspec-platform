@@ -1,0 +1,17 @@
+# speedyspec-php links the static PHP at SPEEDYSPEC_PHP_PREFIX (it has no default), and ext-php-rs's build script
+# finds PHP through PHP and PHP_CONFIG before it looks on PATH. Point all of them at the static build so the system
+# PHP is never used. A variable already set in the environment wins (scripts/linux-php.sh and CI rely on the
+# defaults; set SPEEDYSPEC_PHP_PREFIX, PHP, PHP_CONFIG and SODIUM_LIB_DIR together if you move the build).
+[env]
+SPEEDYSPEC_PHP_PREFIX = { value = ".php-build/buildroot", relative = true }
+PHP = { value = ".php-build/buildroot/bin/php", relative = true }
+PHP_CONFIG = { value = ".php-build/buildroot/bin/php-config", relative = true }
+# The oldest macOS the binary runs on: what the static PHP is built for too
+# (scripts/build-php.sh), so nothing linked in demands a newer one. Ignored off macOS.
+MACOSX_DEPLOYMENT_TARGET = "12.0"
+# Anything linking libsodium-sys-stable links the static PHP's own libsodium.a, so Rust and ext-sodium share one
+# libsodium at the version scripts/build-php.sh pins, and no crate builds or downloads a copy.
+SODIUM_LIB_DIR = { value = ".php-build/buildroot/lib", relative = true }
+# speedyspec-compat's catalogues and fixtures (compat/), wherever a test runs from. A consumer that runs the recorded
+# scenarios sets its own.
+SPEEDYSPEC_COMPAT_DIR = { value = "compat", relative = true }

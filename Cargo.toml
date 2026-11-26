@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# These three still dev-depend on server-only crates (speedyspec-wp-kses-testkit, speedyspec-wp-text-corpus), which
+# would stop the whole workspace from loading. They rejoin once the readiness PR moves those tests to the server.
+exclude = [
+    "crates/speedyspec-wp-html-split",
+    "crates/speedyspec-wp-html-syntax",
+    "crates/speedyspec-wp-kses-lexical",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+repository = "https://github.com/SpeedySpec/speedyspec-platform"

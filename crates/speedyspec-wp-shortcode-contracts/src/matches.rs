@@ -14,7 +14,10 @@ impl ShortcodeMatch {
     /// `$m` as `preg_replace_callback()` builds it: group 6 always takes part, so an unmatched group is `""`.
     pub fn groups_in(&self, haystack: &[u8]) -> MatchGroups {
         MatchGroups(std::array::from_fn(|i| {
-            self.groups[i].clone().map(|r| haystack[r].to_vec()).unwrap_or_default()
+            self.groups[i]
+                .clone()
+                .map(|r| haystack[r].to_vec())
+                .unwrap_or_default()
         }))
     }
 }

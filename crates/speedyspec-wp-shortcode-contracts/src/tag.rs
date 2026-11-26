@@ -21,7 +21,10 @@ impl TagName {
     ///
     /// [`InvalidTagName`] when WordPress would call `_doing_it_wrong()` and not register it.
     pub fn new(name: &[u8]) -> Result<Self, InvalidTagName> {
-        if name.iter().all(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0 | 0x0B)) {
+        if name
+            .iter()
+            .all(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0 | 0x0B))
+        {
             return Err(InvalidTagName::Empty);
         }
         if name.iter().any(|&b| is_reserved(b)) {

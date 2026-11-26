@@ -50,7 +50,9 @@ impl PartialEq for ShortcodeError {
     /// Compares kind and message; a thrown payload is compared by identity.
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Thrown(a), Self::Thrown(b)) => a.message == b.message && Rc::ptr_eq(&a.payload, &b.payload),
+            (Self::Thrown(a), Self::Thrown(b)) => {
+                a.message == b.message && Rc::ptr_eq(&a.payload, &b.payload)
+            }
             _ => self.kind() == other.kind() && self.message() == other.message(),
         }
     }
