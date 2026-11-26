@@ -254,3 +254,10 @@ impl NativeArea for TwinsArea {
         }
     }
 }
+
+/// `speedyspec-php-port-macros`' README example, run here because the code the attribute generates calls this crate,
+/// and the macro crate can't dev-depend on it: release-please's cargo-workspace plugin rejects the cycle. Only
+/// doctests compile it.
+#[cfg(doctest)]
+#[doc = include_str!("../../speedyspec-php-port-macros/README.md")]
+struct PhpPortMacrosReadme;

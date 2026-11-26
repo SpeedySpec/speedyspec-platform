@@ -1851,7 +1851,6 @@ version = "0.1.4"
 dependencies = [
  "proc-macro2",
  "quote",
- "speedyspec-php-ext",
  "syn 2.0.119",
 ]
 
@@ -1934,7 +1933,6 @@ dependencies = [
  "speedyspec-cqrs",
  "speedyspec-hooks",
  "speedyspec-wp-hooks-contracts",
- "speedyspec-wp-hooks-memory",
 ]
 
 [[package]]

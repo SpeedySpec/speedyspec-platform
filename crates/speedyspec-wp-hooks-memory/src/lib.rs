@@ -164,3 +164,9 @@ impl HookStore for MemoryHookStore {
         }
     }
 }
+
+/// `speedyspec-wp-hooks`' README example, run over this store. It runs here because `speedyspec-wp-hooks` can't
+/// dev-depend on this crate: release-please's cargo-workspace plugin rejects the cycle. Only doctests compile it.
+#[cfg(doctest)]
+#[doc = include_str!("../../speedyspec-wp-hooks/README.md")]
+struct WpHooksReadme;
