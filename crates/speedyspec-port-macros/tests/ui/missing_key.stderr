@@ -1,0 +1,5 @@
+error: #[port] needs key = "PHP\\Interface\\Name"
+ --> tests/ui/missing_key.rs:2:11
+  |
+2 | pub trait P {
+  |           ^

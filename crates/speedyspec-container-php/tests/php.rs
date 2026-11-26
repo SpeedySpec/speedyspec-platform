@@ -14,6 +14,65 @@ const GREETER: &str = "SpeedySpec\\Testing\\Greeter";
 const COUNTER: &str = "SpeedySpec\\Testing\\Counter";
 const CLOCK: &str = "SpeedySpec\\Testing\\Clock";
 
+/// An edge port declared the way a contracts crate does, its twin generated the way a `-php` crate does.
+#[speedyspec_port_macros::port(key = "SpeedySpec\\Testing\\Speaker", edge)]
+pub trait Speaker {
+    fn speak(&self, word: String) -> String;
+}
+
+__speedyspec_port_Speaker!(::speedyspec_php_port_macros::php_twin);
+
+struct RustSpeaker;
+
+impl Speaker for RustSpeaker {
+    fn speak(&self, _word: String) -> String {
+        "rust".to_string()
+    }
+}
+
+/// A port bound only to test the stateful refusal through a proxy.
+#[speedyspec_port_macros::port(key = "SpeedySpec\\Testing\\Ledger", edge)]
+pub trait Ledger {
+    fn total(&self) -> i64;
+}
+
+__speedyspec_port_Ledger!(::speedyspec_php_port_macros::php_twin);
+
+/// A seam whose provider declares its port stateful.
+struct TallyProvider;
+
+const TALLY: &str = "SpeedySpec\\Testing\\Tally";
+
+impl speedyspec_container_php::Provider for TallyProvider {
+    fn seam(&self) -> &'static str {
+        "tally"
+    }
+    fn register(&self, container: &Container) {
+        container.singleton(TALLY, |_, _| Ok(Rc::new(0_i64) as Resolved));
+    }
+    fn stateful(&self) -> &'static [&'static str] {
+        &[TALLY]
+    }
+    fn area(
+        &self,
+        _: &Rc<Container>,
+    ) -> Result<Rc<dyn NativeArea>, speedyspec_container_php::ProviderError> {
+        Ok(Rc::new(TallyArea))
+    }
+}
+
+struct TallyArea;
+
+impl NativeArea for TallyArea {}
+
+struct RustLedger;
+
+impl Ledger for RustLedger {
+    fn total(&self) -> i64 {
+        1
+    }
+}
+
 #[php_port(name = "SpeedySpec\\Testing\\Greeter")]
 pub trait Greeter {
     fn greet(&self, name: String) -> String;
@@ -57,12 +116,22 @@ fn main() {
     let container = Rc::new(Container::new());
     container.bind_port::<dyn Greeter>(GREETER, |_, _| Ok(Rc::new(RustGreeter) as Rc<dyn Greeter>));
     container.singleton(COUNTER, |_, _| Ok(Rc::new(0_i64) as Resolved));
+    container.singleton_port::<dyn Speaker>(SPEAKER_KEY, |_, _| {
+        Ok(Rc::new(RustSpeaker) as Rc<dyn Speaker>)
+    });
+    container
+        .singleton_port::<dyn Ledger>(LEDGER_KEY, |_, _| Ok(Rc::new(RustLedger) as Rc<dyn Ledger>));
 
     let area = ContainerArea::new("demo", container.clone())
         .port::<dyn Greeter>(GREETER, |object| Rc::new(PhpGreeter::new(object)))
         .stateful(COUNTER)
+        .stateful(LEDGER_KEY)
         .bindings(vec![(CLOCK.to_string(), "FixedClock".to_string())]);
-    let areas: Vec<Rc<dyn NativeArea>> = vec![twins_area(), Rc::new(area)];
+    let providers: Vec<Rc<dyn speedyspec_container_php::Provider>> = vec![Rc::new(TallyProvider)];
+    let (area, provided, _) =
+        speedyspec_container_php::compose(&container, area, &providers).expect("composes");
+    let mut areas: Vec<Rc<dyn NativeArea>> = vec![twins_area(), Rc::new(area)];
+    areas.extend(provided);
     let php = Php::boot(BootOptions {
         hooks: Rc::new(MemoryHooks::new()),
         preload: &[],
@@ -240,5 +309,87 @@ fn main() {
         "stateful_port_bound_before_use_is_allowed",
         is(&early, Value::Int(1)),
         &early,
+    );
+
+    // php_binding_of_an_edge_port_reaches_rust_through_its_proxy_and_reverts: no `.port()` call registered the
+    // Speaker adapter; php_twin! did.
+    php.restart_request().expect("the next request starts");
+    let speaker = ProxySpeaker::new(&container);
+    let before = speaker.speak("hi".into());
+    php.eval(
+        "t",
+        r"class Loud implements \SpeedySpec\Testing\Speaker {
+              public function speak(string $word): string { return strtoupper($word); }
+          }
+          \SpeedySpec\Container\Container::getInstance()->bind(\SpeedySpec\Testing\Speaker::class, fn () => new Loud());",
+    )
+    .expect("PHP binds the edge port");
+    let during = speaker.speak("hi".into());
+    php.restart_request().expect("the next request starts");
+    let after = speaker.speak("hi".into());
+    check(
+        "php_binding_of_an_edge_port_reaches_rust_through_its_proxy_and_reverts",
+        before == "rust" && during == "HI" && after == "rust",
+        (before, during, after),
+    );
+
+    // stateful_edge_port_rebind_after_use_is_refused_in_a_later_request (Review Focus 1)
+    let ledger = ProxyLedger::new(&container);
+    ledger.total();
+    php.restart_request().expect("the next request starts");
+    ledger.total();
+    let refused = php.eval(
+        "t",
+        r"try {
+              \SpeedySpec\Container\Container::getInstance()->bind(\SpeedySpec\Testing\Ledger::class, fn () => null);
+              return 'bound';
+          } catch (\SpeedySpec\Container\ContainerException $e) {
+              return $e->getMessage();
+          }",
+    );
+    check(
+        "stateful_edge_port_rebind_after_use_is_refused_in_a_later_request",
+        matches!(&refused, Ok(Value::Str(m)) if m.contains("SpeedySpec\\Testing\\Ledger holds state")),
+        &refused,
+    );
+
+    // stateful_keys_from_a_provider_are_marked
+    php.restart_request().expect("the next request starts");
+    container.make(TALLY).expect("the tally resolves");
+    let refused = php.eval(
+        "t",
+        r"try {
+              \SpeedySpec\Container\Container::getInstance()->bind('SpeedySpec\Testing\Tally', fn () => 5);
+              return 'bound';
+          } catch (\SpeedySpec\Container\ContainerException $e) {
+              return $e->getMessage();
+          }",
+    );
+    check(
+        "stateful_keys_from_a_provider_are_marked",
+        matches!(&refused, Ok(Value::Str(m)) if m.contains("SpeedySpec\\Testing\\Tally holds state")),
+        &refused,
+    );
+
+    // php_bind_of_a_port_key_is_shared_for_the_request: PHP's bind() of a port key keeps one object for the request,
+    // so a PHP replacement keeps its state between calls (the spec's default for ports).
+    php.restart_request().expect("the next request starts");
+    php.eval(
+        "t",
+        r"class Counting implements \SpeedySpec\Testing\Speaker {
+              private int $calls = 0;
+              public function speak(string $word): string { return (string) ++$this->calls; }
+          }
+          \SpeedySpec\Container\Container::getInstance()->bind(\SpeedySpec\Testing\Speaker::class, fn () => new Counting());",
+    )
+    .expect("PHP binds the edge port");
+    let first = speaker.speak("a".into());
+    let second = speaker.speak("b".into());
+    php.restart_request().expect("the next request starts");
+    let after = speaker.speak("c".into());
+    check(
+        "php_bind_of_a_port_key_is_shared_for_the_request",
+        first == "1" && second == "2" && after == "rust",
+        (first, second, after),
     );
 }

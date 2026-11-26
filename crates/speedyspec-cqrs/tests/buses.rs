@@ -151,3 +151,16 @@ fn missing_handler_is_an_error_naming_the_key() {
 fn query_bus_refuses_command() {
     trybuild::TestCases::new().compile_fail("tests/ui/query_bus_refuses_command.rs");
 }
+
+#[test]
+fn handler_ref_marks_its_key_resolved_in_each_request() {
+    let c = container();
+    let direct = HandlerRef::<AddPost>::new(c.clone());
+    c.start_request();
+    direct.call(AddPost { title: "a".into() }).unwrap();
+    c.end_request();
+    c.start_request();
+    assert!(!c.resolved_in_request(AddPost::KEY));
+    direct.call(AddPost { title: "b".into() }).unwrap();
+    assert!(c.resolved_in_request(AddPost::KEY));
+}

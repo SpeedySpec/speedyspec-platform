@@ -1,0 +1,5 @@
+error: #[port] methods must be object-safe: each
+ --> tests/ui/impl_trait_arg.rs:3:5
+  |
+3 |     fn each(&self, f: impl Fn(i64)) -> i64;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -9,6 +9,10 @@ repository.workspace = true
 # The tests read the repository's compat/ and tests/php, so they run in this repository only.
 exclude = ["tests/"]
 
+[package.metadata.speedyspec]
+seam = "hooks"
+role = "php"
+
 [dependencies]
 speedyspec-compat = { path = "../speedyspec-compat", version = "0.9.0" }
 speedyspec-container = { path = "../speedyspec-container", version = "0.1.4" }

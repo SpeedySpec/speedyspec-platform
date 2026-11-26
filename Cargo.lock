@@ -1767,6 +1767,9 @@ dependencies = [
  "speedyspec-hooks-memory",
  "speedyspec-php",
  "speedyspec-php-ext",
+ "speedyspec-php-port-macros",
+ "speedyspec-port-macros",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1862,6 +1865,17 @@ name = "speedyspec-php-serialize"
 version = "0.2.0"
 dependencies = [
  "speedyspec-hooks",
+]
+
+[[package]]
+name = "speedyspec-port-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "speedyspec-container",
+ "syn 2.0.119",
+ "trybuild",
 ]
 
 [[package]]

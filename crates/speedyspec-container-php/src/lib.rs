@@ -21,6 +21,9 @@ use speedyspec_php::native::{self, NativeError};
 use speedyspec_php::{NativeArea, PhpError};
 use speedyspec_php_ext::{Key, PhpObject, Value};
 
+mod provider;
+pub use provider::{Provider, ProviderError, compose};
+
 /// The facade's PHP source.
 const FACADE: &str = include_str!("container.php");
 const EXCEPTION: &str = "SpeedySpec\\Container\\ContainerException";
@@ -82,6 +85,15 @@ impl ContainerArea {
             bindings: RefCell::new(Vec::new()),
         });
         STATE.with(|s| *s.borrow_mut() = Some(state.clone()));
+        // Every edge port linked into the binary (`php_twin!`) can be bound from PHP without wiring it here.
+        for adapter in speedyspec_php_ext::port_adapters() {
+            let wrap = adapter.wrap;
+            let wrap: Wrap = Rc::new(move |object| wrap(object));
+            state
+                .ports
+                .borrow_mut()
+                .insert(adapter.key.to_string(), wrap);
+        }
         ContainerArea { state }
     }
 
@@ -362,9 +374,18 @@ fn native_bind(args: &[Value]) -> Result<Value, NativeError> {
     match args.get(2) {
         Some(Value::Int(1)) => c.singleton_foreign(&key, factory),
         Some(Value::Int(2)) => c.scoped_foreign(&key, factory),
+        // A port's replacement is one object for the request, so it keeps its state between Rust's calls; a binding
+        // made in PHP ends with the request either way.
+        _ if is_port(&state, &key) => c.singleton_foreign(&key, factory),
         _ => c.bind_foreign(&key, factory),
     }
     Ok(Value::Null)
+}
+
+/// Whether `key` (after aliases) is a port Rust callers reach through its PHP adapter.
+fn is_port(state: &State, key: &str) -> bool {
+    let key = state.container.get_alias(key);
+    state.ports.borrow().contains_key(&key)
 }
 
 fn native_instance(args: &[Value]) -> Result<Value, NativeError> {

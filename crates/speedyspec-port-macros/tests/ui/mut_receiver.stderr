@@ -1,0 +1,5 @@
+error: #[port] methods take &self
+ --> tests/ui/mut_receiver.rs:3:12
+  |
+3 |     fn set(&mut self, v: i64);
+  |            ^^^^^^^^^

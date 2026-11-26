@@ -42,12 +42,87 @@ pub fn php_port(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 fn expand(php_name: &str, item: &ItemTrait) -> syn::Result<proc_macro2::TokenStream> {
     let ident = &item.ident;
-    let vis = &item.vis;
+    let generated = generate(
+        php_name,
+        &quote!(#ident),
+        ident,
+        &item.vis,
+        &item.items,
+        false,
+    )?;
+    Ok(quote! {
+        #item
+
+        #generated
+    })
+}
+
+/// `php_twin!` (used through a contracts crate's `__speedyspec_port_<Trait>!`): the twin, the PHP adapter and the
+/// adapter's registration for an edge port declared with `#[port(key = "…", edge)]` in a contracts crate. Its input
+/// is `key = "…", path = some::Trait, trait Trait { <method signatures> }`.
+#[proc_macro]
+pub fn php_twin(input: TokenStream) -> TokenStream {
+    let twin = parse_macro_input!(input as TwinInput);
+    let vis: syn::Visibility = syn::parse_quote!(pub);
+    let path = &twin.path;
+    match generate(
+        &twin.key.value(),
+        &quote!(#path),
+        &twin.item.ident,
+        &vis,
+        &twin.item.items,
+        true,
+    ) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+struct TwinInput {
+    key: LitStr,
+    path: syn::Path,
+    item: ItemTrait,
+}
+
+impl syn::parse::Parse for TwinInput {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let named = |input: syn::parse::ParseStream, name: &str| -> syn::Result<()> {
+            let ident: syn::Ident = input.parse()?;
+            if ident != name {
+                return Err(syn::Error::new_spanned(
+                    ident,
+                    format!("expected `{name} =`"),
+                ));
+            }
+            input.parse::<syn::Token![=]>()?;
+            Ok(())
+        };
+        named(input, "key")?;
+        let key = input.parse()?;
+        input.parse::<syn::Token![,]>()?;
+        named(input, "path")?;
+        let path = input.parse()?;
+        input.parse::<syn::Token![,]>()?;
+        let item = input.parse()?;
+        Ok(TwinInput { key, path, item })
+    }
+}
+
+/// The PHP adapter `Php<Trait>` implementing `trait_path`, and the twin's registration; with `register_adapter`, also
+/// the adapter's registration, so the container's PHP side wraps a PHP object bound to `php_name` in it.
+fn generate(
+    php_name: &str,
+    trait_path: &proc_macro2::TokenStream,
+    ident: &syn::Ident,
+    vis: &syn::Visibility,
+    items: &[TraitItem],
+    register_adapter: bool,
+) -> syn::Result<proc_macro2::TokenStream> {
     let adapter = format_ident!("Php{}", ident);
     let mut methods = Vec::new();
     let mut php_methods = Vec::new();
 
-    for entry in &item.items {
+    for entry in items {
         let TraitItem::Fn(method) = entry else {
             continue;
         };
@@ -134,9 +209,24 @@ fn expand(php_name: &str, item: &ItemTrait) -> syn::Result<proc_macro2::TokenStr
     source.push_str(&php_methods.join("\n"));
     source.push_str("\n}\n}\n");
 
-    Ok(quote! {
-        #item
+    let registration = if register_adapter {
+        quote! {
+            ::speedyspec_php_ext::inventory::submit! {
+                ::speedyspec_php_ext::PortAdapter {
+                    key: #php_name,
+                    wrap: |object| {
+                        ::std::rc::Rc::new(
+                            ::std::rc::Rc::new(#adapter::new(object)) as ::std::rc::Rc<dyn #trait_path>,
+                        ) as ::std::rc::Rc<dyn ::std::any::Any>
+                    },
+                }
+            }
+        }
+    } else {
+        quote!()
+    };
 
+    Ok(quote! {
         /// The PHP adapter of this port: calls a PHP object implementing its twin.
         #vis struct #adapter(::speedyspec_php_ext::PhpObject);
 
@@ -150,13 +240,15 @@ fn expand(php_name: &str, item: &ItemTrait) -> syn::Result<proc_macro2::TokenStr
             }
         }
 
-        impl #ident for #adapter {
+        impl #trait_path for #adapter {
             #(#methods)*
         }
 
         ::speedyspec_php_ext::inventory::submit! {
             ::speedyspec_php_ext::Twin { name: #php_name, source: #source }
         }
+
+        #registration
     })
 }
 

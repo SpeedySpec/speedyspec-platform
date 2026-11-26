@@ -206,6 +206,22 @@ pub struct Twin {
 
 inventory::collect!(Twin);
 
+/// How a PHP object bound to an edge port's key becomes that port for Rust callers: `wrap` returns an
+/// `Rc<Rc<dyn Port>>` as `Rc<dyn Any>`, the shape the container's `make_port` reads. Submitted by `php_twin!`.
+pub struct PortAdapter {
+    pub key: &'static str,
+    pub wrap: fn(PhpObject) -> Rc<dyn std::any::Any>,
+}
+
+inventory::collect!(PortAdapter);
+
+/// Every edge port adapter linked into this binary, by key.
+pub fn port_adapters() -> Vec<&'static PortAdapter> {
+    let mut all: Vec<&'static PortAdapter> = inventory::iter::<PortAdapter>.into_iter().collect();
+    all.sort_by_key(|adapter| adapter.key);
+    all
+}
+
 /// Every twin linked into this binary, by PHP name.
 pub fn twins() -> Vec<&'static Twin> {
     let mut all: Vec<&'static Twin> = inventory::iter::<Twin>.into_iter().collect();

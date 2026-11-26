@@ -9,6 +9,10 @@ repository.workspace = true
 # The tests read the repository's compat/ and tests/php, so they run in this repository only.
 exclude = ["tests/"]
 
+[package.metadata.speedyspec]
+seam = "hooks"
+role = "adapter"
+
 [dependencies]
 indexmap = "2"
 speedyspec-wp-hooks = { path = "../speedyspec-wp-hooks", version = "0.1.4" }

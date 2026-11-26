@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use speedyspec_container::{Container, ContainerError, Params};
+use speedyspec_container::{Container, ContainerError, Params, PortCell};
 
 /// A use case that changes state. `KEY` is its handler's key in the container.
 pub trait Command: 'static {
@@ -278,49 +278,23 @@ fn query_handler<Q: Query>(container: &Container) -> Result<Rc<dyn QueryHandler<
         })
 }
 
-/// A cached handler and the binding it came from.
-struct Cached<H: ?Sized> {
-    target: String,
-    generation: u64,
-    handler: Rc<H>,
-}
-
-/// Resolves through `resolve` unless the cached handler's binding is unchanged.
-fn cached<H: ?Sized>(
-    container: &Container,
-    key: &str,
-    cache: &RefCell<Option<Cached<H>>>,
-    resolve: impl FnOnce() -> Result<Rc<H>, BusError>,
-) -> Result<Rc<H>, BusError> {
-    let target = container.get_alias(key);
-    let generation = container.generation(key);
-    if let Some(hit) = cache.borrow().as_ref()
-        && hit.target == target
-        && hit.generation == generation
-    {
-        return Ok(hit.handler.clone());
-    }
-    let handler = resolve()?;
-    *cache.borrow_mut() = Some(Cached {
-        target,
-        generation,
-        handler: handler.clone(),
-    });
-    Ok(handler)
+fn no_handler(key: &'static str) -> impl FnOnce(ContainerError) -> BusError {
+    move |source| BusError::NoHandler { key, source }
 }
 
 /// Direct dispatch of `C`: its handler, resolved once and called with no middleware.
 pub struct HandlerRef<C: Command> {
-    container: Rc<Container>,
-    cache: RefCell<Option<Cached<dyn CommandHandler<C>>>>,
+    /// Kept so the container lives as long as this handle, as before [`PortCell`] (which holds it weakly).
+    _container: Rc<Container>,
+    cell: PortCell<dyn CommandHandler<C>>,
     _command: PhantomData<fn(C)>,
 }
 
 impl<C: Command> HandlerRef<C> {
     pub fn new(container: Rc<Container>) -> HandlerRef<C> {
         HandlerRef {
-            container,
-            cache: RefCell::new(None),
+            cell: PortCell::new(&container, C::KEY),
+            _container: container,
             _command: PhantomData,
         }
     }
@@ -332,32 +306,29 @@ impl<C: Command> HandlerRef<C> {
     /// The handler bound now (resolved again only when its binding changed), for a caller that needs to know
     /// which one it is.
     pub fn handler(&self) -> Result<Rc<dyn CommandHandler<C>>, BusError> {
-        cached(&self.container, C::KEY, &self.cache, || {
-            command_handler::<C>(&self.container)
-        })
+        self.cell.try_get().map_err(no_handler(C::KEY))
     }
 }
 
 /// Direct dispatch of `Q`, as [`HandlerRef`] is for commands.
 pub struct QueryRef<Q: Query> {
-    container: Rc<Container>,
-    cache: RefCell<Option<Cached<dyn QueryHandler<Q>>>>,
+    /// See [`HandlerRef`].
+    _container: Rc<Container>,
+    cell: PortCell<dyn QueryHandler<Q>>,
     _query: PhantomData<fn(Q)>,
 }
 
 impl<Q: Query> QueryRef<Q> {
     pub fn new(container: Rc<Container>) -> QueryRef<Q> {
         QueryRef {
-            container,
-            cache: RefCell::new(None),
+            cell: PortCell::new(&container, Q::KEY),
+            _container: container,
             _query: PhantomData,
         }
     }
 
     pub fn call(&self, query: Q) -> Result<Q::Result, BusError> {
-        let handler = cached(&self.container, Q::KEY, &self.cache, || {
-            query_handler::<Q>(&self.container)
-        })?;
+        let handler = self.cell.try_get().map_err(no_handler(Q::KEY))?;
         Ok(handler.handle(query))
     }
 }

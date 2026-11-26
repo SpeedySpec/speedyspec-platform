@@ -6,12 +6,19 @@
 //! puts every key back on its worker-lifetime entry. An entry registered by a language bridge is *foreign*
 //! ([`Container::is_foreign`]): that is the override flag, and a Rust binding never involves the bridge.
 //!
+//! [`Container::epoch`] moves on any change to any binding, alias, extender or callback, and at every request start
+//! and end. [`PortCell`] caches a resolved port against it, so a port reached through a proxy costs one compare when
+//! nothing was rebound, and re-resolves (honouring the binding's [`Sharing`]) when something was.
+//!
 //! A container belongs to one thread (the worker's, alongside PHP), so values are `Rc`.
 
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+
+mod port_cell;
+pub use port_cell::PortCell;
 
 /// A resolved value.
 pub type Resolved = Rc<dyn Any>;
@@ -90,8 +97,9 @@ pub trait Autowirer {
     ) -> Option<Result<Resolved, ContainerError>>;
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Sharing {
+/// How a binding shares what it builds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sharing {
     Transient,
     Singleton,
     Scoped,
@@ -141,6 +149,17 @@ pub struct Container {
     building: RefCell<Vec<String>>,
     lifetime: Cell<Lifetime>,
     autowirer: RefCell<Option<Rc<dyn Autowirer>>>,
+    /// See [`Container::epoch`]; outside `inner`, so reading it never borrows, and shared with every
+    /// [`PortCell`] so their fast path never upgrades a weak reference.
+    epoch: Rc<Cell<u64>>,
+}
+
+/// A dropped container moves the epoch, so a [`PortCell`] warmed while it lived stops answering from its cache and
+/// reports the container as gone.
+impl Drop for Container {
+    fn drop(&mut self) {
+        self.advance();
+    }
 }
 
 impl Default for Container {
@@ -208,7 +227,24 @@ impl Container {
             building: RefCell::new(Vec::new()),
             lifetime: Cell::new(Lifetime::Worker),
             autowirer: RefCell::new(None),
+            epoch: Rc::new(Cell::new(0)),
         }
+    }
+
+    /// Changes whenever any binding, alias, extender, contextual binding, tag or callback changes, whenever an
+    /// instance is forgotten, and at every request start and end. Resolving never changes it. A cache built at
+    /// another epoch must re-check; one built at this epoch is current.
+    pub fn epoch(&self) -> u64 {
+        self.epoch.get()
+    }
+
+    /// The cell [`Container::epoch`] reads.
+    pub(crate) fn epoch_cell(&self) -> Rc<Cell<u64>> {
+        self.epoch.clone()
+    }
+
+    fn advance(&self) {
+        self.epoch.set(self.epoch.get().wrapping_add(1));
     }
 
     /// Registrations made while the returned guard lives get `lifetime` (a bridge sets `Request` around PHP's calls).
@@ -370,6 +406,7 @@ impl Container {
     }
 
     fn push(&self, key: &str, kind: Kind, foreign: bool) {
+        self.advance();
         let lifetime = self.lifetime.get();
         let mut inner = self.inner.borrow_mut();
         let stack = inner.entries.entry(key.to_string()).or_default();
@@ -408,6 +445,7 @@ impl Container {
         if self.get_alias(key) == alias || key == alias {
             return Err(ContainerError::SelfAlias(alias.to_string()));
         }
+        self.advance();
         let lifetime = self.lifetime.get();
         let mut inner = self.inner.borrow_mut();
         let stack = inner.aliases.entry(alias.to_string()).or_default();
@@ -450,6 +488,7 @@ impl Container {
         key: &str,
         extender: impl Fn(Resolved, &Container) -> Result<Resolved, ContainerError> + 'static,
     ) {
+        self.advance();
         let key = self.get_alias(key);
         let extender: Extender = Rc::new(extender);
         let lifetime = self.lifetime.get();
@@ -487,6 +526,7 @@ impl Container {
     }
 
     fn add_contextual(&self, consumer: String, need: String, give: Give) {
+        self.advance();
         let lifetime = self.lifetime.get();
         self.inner
             .borrow_mut()
@@ -497,6 +537,7 @@ impl Container {
     }
 
     pub fn tag(&self, keys: &[&str], tag: &str) {
+        self.advance();
         let lifetime = self.lifetime.get();
         let mut inner = self.inner.borrow_mut();
         let list = inner.tags.entry(tag.to_string()).or_default();
@@ -522,6 +563,7 @@ impl Container {
         key: Option<&str>,
         callback: impl Fn(&str, &Container) + 'static,
     ) {
+        self.advance();
         let lifetime = self.lifetime.get();
         self.inner
             .borrow_mut()
@@ -530,6 +572,7 @@ impl Container {
     }
 
     pub fn resolving(&self, key: Option<&str>, callback: impl Fn(&Resolved, &Container) + 'static) {
+        self.advance();
         let lifetime = self.lifetime.get();
         self.inner.borrow_mut().resolving.push((
             key.map(str::to_string),
@@ -543,6 +586,7 @@ impl Container {
         key: Option<&str>,
         callback: impl Fn(&Resolved, &Container) + 'static,
     ) {
+        self.advance();
         let lifetime = self.lifetime.get();
         self.inner
             .borrow_mut()
@@ -551,6 +595,21 @@ impl Container {
     }
 
     // ----- resolving
+
+    /// How the entry answering `key` (after aliases) shares its value: an instance counts as a singleton; `None` when
+    /// `key` has no entry.
+    pub fn sharing(&self, key: &str) -> Option<Sharing> {
+        let key = self.get_alias(key);
+        let inner = self.inner.borrow();
+        inner
+            .entries
+            .get(&key)
+            .and_then(|stack| stack.last())
+            .map(|entry| match entry.kind {
+                Kind::Binding(_, sharing) => sharing,
+                Kind::Instance(_) => Sharing::Singleton,
+            })
+    }
 
     /// True when `key` (or what it aliases) has an entry.
     pub fn has(&self, key: &str) -> bool {
@@ -626,6 +685,7 @@ impl Container {
 
     /// Starts a request: nothing counts as resolved in it yet.
     pub fn start_request(&self) {
+        self.advance();
         self.inner.borrow_mut().resolved_in_request.clear();
     }
 
@@ -797,6 +857,7 @@ impl Container {
 
     /// Drops the shared value of `key` (and its registered instances).
     pub fn forget_instance(&self, key: &str) {
+        self.advance();
         let key = self.get_alias(key);
         let mut inner = self.inner.borrow_mut();
         inner.shared.remove(&key);
@@ -808,6 +869,7 @@ impl Container {
 
     /// Drops every shared value and registered instance.
     pub fn forget_instances(&self) {
+        self.advance();
         let mut inner = self.inner.borrow_mut();
         inner.shared.clear();
         let keys: Vec<String> = inner.entries.keys().cloned().collect();
@@ -821,17 +883,20 @@ impl Container {
 
     /// Drops every scoped value; singletons stay.
     pub fn forget_scoped_instances(&self) {
+        self.advance();
         self.inner.borrow_mut().scoped.clear();
     }
 
     /// Forgets everything.
     pub fn flush(&self) {
+        self.advance();
         *self.inner.borrow_mut() = Inner::default();
     }
 
     /// Ends the request: removes every `Request` registration (bindings, instances, aliases, extenders, contextual
     /// bindings, tags, callbacks) and every scoped value. Each key answers with its worker-lifetime entry again.
     pub fn end_request(&self) {
+        self.advance();
         let mut inner = self.inner.borrow_mut();
         let keys: Vec<String> = inner.entries.keys().cloned().collect();
         for key in &keys {
