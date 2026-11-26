@@ -261,5 +261,9 @@
   ],
   "target_directory": "/repo/target",
   "version": 1,
-  "workspace_root": "/repo"
+  "workspace_root": "/repo",
+  "resolve": {
+    "nodes": [],
+    "root": null
+  }
 }
