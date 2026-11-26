@@ -1934,6 +1934,7 @@ dependencies = [
  "speedyspec-cqrs",
  "speedyspec-hooks",
  "speedyspec-wp-hooks-contracts",
+ "speedyspec-wp-hooks-memory",
 ]
 
 [[package]]

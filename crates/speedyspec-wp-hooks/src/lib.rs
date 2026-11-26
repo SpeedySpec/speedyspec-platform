@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's Hook API, in Rust.
 //!
 //! - [`WpHookApi`] is `plugin.php`: every function, over the outbound port [`HookStore`] (`$wp_filter`, `$wp_actions`,

@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Hook contract for speedyspec. Contains no storage: backends implement [`Hooks`].
 
 #[cfg(feature = "conformance")]

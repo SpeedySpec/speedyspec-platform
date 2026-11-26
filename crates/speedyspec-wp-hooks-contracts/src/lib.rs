@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The hooks seam's contracts: the Hook API port other seams call, and the values they pass through it.
 //!
 //! - [`HookApi`] is `plugin.php` as other seams use it. `speedyspec-wp-hooks` implements it.

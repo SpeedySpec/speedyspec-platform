@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! WordPress's hook functions, `WP_Hook` and the hook globals in PHP, over the Rust Hook API.
 //!
 //! [`WpHooksArea`] declares, at the start of every request (from `hooks.php`), WordPress's hook functions with their

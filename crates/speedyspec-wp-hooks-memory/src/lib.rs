@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The in-memory hook store.
 //!
 //! Callbacks registered before the first request (or between requests) belong to the worker partition and live as
