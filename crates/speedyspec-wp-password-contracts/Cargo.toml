@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-wp-password-contracts"
-version = "0.3.0"
+version = "0.4.0"
 description = "Contracts for WordPress's password functions: the pluggable ports, the filters, $wp_hasher and bcrypt."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,4 +22,4 @@ seam = "password"
 role = "contracts"
 
 [dependencies]
-speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.2.0" }

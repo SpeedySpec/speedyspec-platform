@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-fastcgi"
-version = "0.1.4"
+version = "0.2.0"
 description = "FastCGI 1.0: records and name-value pairs, a blocking responder (the PHP worker's side) and an async client (the server's side), streaming in both directions with backpressure."
 edition.workspace = true
 rust-version.workspace = true

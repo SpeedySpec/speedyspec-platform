@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-wp-kses-lexical"
-version = "0.5.0"
+version = "0.6.0"
 description = "kses.php's pure string functions (entities, protocols, attribute parsing) over fast byte matchers."
 edition.workspace = true
 rust-version.workspace = true
@@ -24,5 +24,5 @@ role = "implementation"
 [dependencies]
 indexmap = "2"
 memchr = "2"
-speedyspec-wp-html-syntax = { path = "../speedyspec-wp-html-syntax", version = "0.5.0" }
-speedyspec-wp-kses-contracts = { path = "../speedyspec-wp-kses-contracts", version = "0.5.0" }
+speedyspec-wp-html-syntax = { path = "../speedyspec-wp-html-syntax", version = "0.6.0" }
+speedyspec-wp-kses-contracts = { path = "../speedyspec-wp-kses-contracts", version = "0.6.0" }

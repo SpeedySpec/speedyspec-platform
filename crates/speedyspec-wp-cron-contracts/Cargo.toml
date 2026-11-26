@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-wp-cron-contracts"
-version = "0.4.0"
+version = "0.5.0"
 description = "WordPress's cron contracts: the cron array as a plain value, the ports the scheduling core needs, and its outcomes."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,4 +22,4 @@ seam = "cron"
 role = "contracts"
 
 [dependencies]
-speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.2.0" }

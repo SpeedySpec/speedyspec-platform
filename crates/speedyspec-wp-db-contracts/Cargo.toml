@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-wp-db-contracts"
-version = "0.1.0"
+version = "0.2.0"
 description = "The wpdb port (wpdb, as other seams call it), its values and its errors."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,6 +22,6 @@ seam = "database"
 role = "contracts"
 
 [dependencies]
-speedyspec-data = { path = "../speedyspec-data", version = "0.2.0" }
-speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
-speedyspec-wp-hooks-contracts = { path = "../speedyspec-wp-hooks-contracts", version = "0.1.0" }
+speedyspec-data = { path = "../speedyspec-data", version = "0.3.0" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.2.0" }
+speedyspec-wp-hooks-contracts = { path = "../speedyspec-wp-hooks-contracts", version = "0.2.0" }

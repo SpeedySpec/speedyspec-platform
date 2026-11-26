@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-php"
-version = "0.7.0"
+version = "0.8.0"
 description = "Embedded, statically linked PHP interpreter for speedyspec."
 edition.workspace = true
 rust-version.workspace = true
@@ -34,7 +34,7 @@ embed = ["ext-php-rs/embed"]
 # the docs without it.
 ext-php-rs = { version = "=0.16.5" }
 # The hook contract only; the backend is chosen by whoever boots PHP.
-speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.2.0" }
 
 [dev-dependencies]
 speedyspec-hooks = { path = "../speedyspec-hooks" }

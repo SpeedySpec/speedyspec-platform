@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-port-macros"
-version = "0.1.0"
+version = "0.2.0"
 description = "#[port]: a port trait's key and its re-resolving container proxy, with no PHP; edge ports also carry their signature to php_twin!."
 edition.workspace = true
 rust-version.workspace = true

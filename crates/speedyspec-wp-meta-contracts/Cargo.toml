@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-wp-meta-contracts"
-version = "0.1.0"
+version = "0.2.0"
 description = "WordPress's metadata API contracts: the meta values, the entity and its errors."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,7 +22,7 @@ seam = "meta"
 role = "contracts"
 
 [dependencies]
-speedyspec-php-serialize = { path = "../speedyspec-php-serialize", version = "0.2.0" }
+speedyspec-php-serialize = { path = "../speedyspec-php-serialize", version = "0.3.0" }
 
 [features]
 conformance = []
