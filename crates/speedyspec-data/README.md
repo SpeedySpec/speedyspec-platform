@@ -7,7 +7,7 @@
 Data-access contracts for speedyspec: values, statements, SQL/NoSQL/Direct stores, engines and the unit of work. No implementations.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** contracts. **Seam:** `database`.
+**Role:** contracts. **Seam:** `data`.
 
 ## What it gives you
 

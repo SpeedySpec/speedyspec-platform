@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! `#[port(key = "PHP\\Interface\\Name")]` (or `#[port(key = "…", edge)]`) on a port trait in a contracts crate
 //! generates, with nothing from PHP:
 //!

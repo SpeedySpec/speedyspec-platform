@@ -7,7 +7,7 @@
 #[php_port]: generates a Rust port trait's PHP twin interface and its PHP adapter.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** platform. **Seam:** none (the platform kernel every seam may use).
+**Role:** platform. **Seam:** [`container`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/container).
 
 ## What it gives you
 

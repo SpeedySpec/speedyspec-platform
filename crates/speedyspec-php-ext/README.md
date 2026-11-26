@@ -7,7 +7,7 @@
 The speedyspec_wordpress PHP extension's shared parts: PHP twins of Rust ports, their PHP adapters, value conversion and the boundary counter.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** platform (PHP binding). **Seam:** none (the platform kernel every seam may use).
+**Role:** platform (PHP binding). **Seam:** [`container`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/container).
 
 ## What it gives you
 

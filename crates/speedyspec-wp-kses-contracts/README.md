@@ -7,7 +7,7 @@
 WordPress's kses sanitizer as contracts: the allowlist types and the ports any kses implementation fills.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** contracts. **Seam:** [`text`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/text).
+**Role:** contracts. **Seam:** [`html`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/html).
 
 ## What it gives you
 
@@ -40,7 +40,7 @@ assert!(!AttrRules::Allowed.is_required());
 ## Where it fits
 
 `speedyspec-wp-kses-lexical` holds kses's pure string functions over these types, and the kses port in
-speedyspec-server implements the rest. See the guide's text seam.
+speedyspec-server implements the rest. See the guide's html seam.
 
 ## Versioning
 

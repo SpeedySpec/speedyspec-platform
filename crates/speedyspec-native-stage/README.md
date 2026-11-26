@@ -7,7 +7,7 @@
 The contract for answering a request in Rust before PHP runs: stages, their outcome and a chain of them.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** contracts. **Seam:** [`route`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/route).
+**Role:** contracts. **Seam:** `http`.
 
 ## What it gives you
 

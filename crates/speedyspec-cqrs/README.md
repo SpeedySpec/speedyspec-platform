@@ -7,7 +7,7 @@
 Command and query buses: handlers resolved from the service container by key, middleware, and direct dispatch.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** platform. **Seam:** none (the platform kernel every seam may use).
+**Role:** platform. **Seam:** [`container`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/container).
 
 ## What it gives you
 

@@ -7,7 +7,7 @@
 Recorded compatibility: run a catalogue of scenarios against WordPress's original code, record the results, and replay them against the Rust ports.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** platform. **Seam:** none (the platform kernel every seam may use).
+**Role:** platform. **Seam:** [`container`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/container).
 
 ## What it gives you
 

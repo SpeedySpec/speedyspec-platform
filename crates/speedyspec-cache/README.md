@@ -7,7 +7,7 @@
 The Caching Store contract: byte values in groups, with expiry. No implementations.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** contracts. **Seam:** [`object-cache`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/object-cache).
+**Role:** contracts. **Seam:** `cache`.
 
 ## What it gives you
 

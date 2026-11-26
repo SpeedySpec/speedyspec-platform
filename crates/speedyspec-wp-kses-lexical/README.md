@@ -7,7 +7,7 @@
 kses.php's pure string functions (entities, protocols, attribute parsing) over fast byte matchers.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** port. **Seam:** [`text`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/text).
+**Role:** port. **Seam:** [`html`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/html).
 
 ## What it gives you
 
@@ -43,7 +43,7 @@ assert_eq!(&*no_null(b"a\0b", false), b"ab");
 ## Where it fits
 
 Implements the pure string parts of `speedyspec-wp-kses-contracts`; the kses port in speedyspec-server builds the
-rest on it. See the guide's text seam.
+rest on it. See the guide's html seam.
 
 ## Versioning
 

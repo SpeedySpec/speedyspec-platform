@@ -7,7 +7,7 @@
 PHP's serialize format in Rust: serialize, unserialize, maybe_serialize, and conversions to hook values.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** port. **Seam:** none (the platform kernel every seam may use).
+**Role:** port. **Seam:** [`container`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/container).
 
 ## What it gives you
 

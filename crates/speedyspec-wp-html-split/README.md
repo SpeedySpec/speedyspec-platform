@@ -7,7 +7,7 @@
 WordPress's wp_html_split() in Rust: splits HTML into text and tag chunks with get_html_split_regex()'s exact semantics, without allocating.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** port. **Seam:** [`text`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/text).
+**Role:** port. **Seam:** [`html`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/html).
 
 ## What it gives you
 
@@ -39,7 +39,7 @@ assert_eq!(chunks, vec![&b"abcd "[..], b"<!-- <html> -->", b" efgh"]);
 ## Where it fits
 
 The formatting functions in speedyspec-server (`wptexturize()`, `wp_replace_in_html_tags()`) use it. It depends
-on `memchr` only. See the guide's text seam.
+on `memchr` only. See the guide's html seam.
 
 ## Versioning
 

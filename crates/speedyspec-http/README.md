@@ -7,7 +7,7 @@
 Contracts for HTTP messages, factories, handlers and middleware, shaped after PSR-7, PSR-17, PSR-15 and PSR-18.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** contracts. **Seam:** [`route`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/route).
+**Role:** contracts. **Seam:** `http`.
 
 ## What it gives you
 
