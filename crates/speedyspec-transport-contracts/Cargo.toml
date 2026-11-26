@@ -1,16 +1,26 @@
 [package]
 name = "speedyspec-transport-contracts"
 version = "0.1.0"
-publish = false
 description = "The unified operation API's transport contracts: the Transport port and its default mapping, bindings, exposure lookup, authentication, codecs and hook stages."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["speedyspec", "transport", "codec", "api", "contracts"]
+categories = ["web-programming", "api-bindings"]
+# The package ships the library only; the tests run in this repository.
+exclude = ["tests/"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.speedyspec]
 seam = "operation"
 role = "contracts"
 
 [dependencies]
-speedyspec-operation-contracts = { path = "../speedyspec-operation-contracts" }
+speedyspec-operation-contracts = { path = "../speedyspec-operation-contracts", version = "0.1.0" }
 thiserror = "2"

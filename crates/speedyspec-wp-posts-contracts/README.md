@@ -1,0 +1,1 @@
+# speedyspec-wp-posts-contracts

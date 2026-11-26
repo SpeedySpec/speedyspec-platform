@@ -6,8 +6,16 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["speedyspec", "wordpress", "hooks", "filters", "actions"]
+categories = ["web-programming"]
 # The tests read the repository's compat/ and tests/php, so they run in this repository only.
 exclude = ["tests/"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.speedyspec]
 seam = "hooks"

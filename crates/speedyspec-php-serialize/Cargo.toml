@@ -1,15 +1,25 @@
 [package]
 name = "speedyspec-php-serialize"
 version = "0.2.0"
-publish = false
 description = "PHP's serialize format in Rust: serialize, unserialize, maybe_serialize, and conversions to hook values."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["speedyspec", "php", "serialize", "unserialize", "wordpress"]
+categories = ["encoding", "parser-implementations"]
+# The package ships the library only; the tests run in this repository.
+exclude = ["tests/"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.speedyspec]
 seam = "container"
 role = "platform"
 
 [dependencies]
-speedyspec-hooks = { path = "../speedyspec-hooks" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }

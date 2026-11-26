@@ -1,0 +1,1 @@
+# speedyspec-wp-media-contracts
