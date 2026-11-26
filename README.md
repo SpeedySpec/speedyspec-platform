@@ -48,7 +48,7 @@ A platform crate depends only on crates.io and on other crates under `crates/`, 
 crate, not even as a dev-dependency, and the root `Cargo.toml` has no `[patch]`. CI checks it:
 
 ```bash
-cargo metadata --format-version 1 --no-deps > metadata.json
+cargo metadata --format-version 1 --locked > metadata.json   # with dependencies, so patches show
 scripts/platform-closure.sh check metadata.json "$PWD"
 scripts/platform-closure.sh closure metadata.json speedyspec-wp-hooks   # what must publish with it
 ```

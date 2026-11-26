@@ -149,10 +149,13 @@ jobs:
         run: cargo metadata --format-version 1 --no-deps --locked > "$RUNNER_TEMP/metadata.json"
       - name: Check the list
         run: scripts/release-crates.sh check "$RUNNER_TEMP/metadata.json"
+      - name: Test the closure check
+        run: bash scripts/tests/platform-closure.sh
+      # With dependencies: a [patch] or [replace] shows only in the resolved graph.
       - name: Check the closure
         run: |
-          bash scripts/tests/platform-closure.sh
-          scripts/platform-closure.sh check "$RUNNER_TEMP/metadata.json" "$GITHUB_WORKSPACE"
+          cargo metadata --format-version 1 --locked > "$RUNNER_TEMP/metadata-full.json"
+          scripts/platform-closure.sh check "$RUNNER_TEMP/metadata-full.json" "$GITHUB_WORKSPACE"
 
   # The crates' documentation. Filled in by the readiness PR.
   docs:
