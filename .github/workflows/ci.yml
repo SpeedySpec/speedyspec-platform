@@ -173,8 +173,13 @@ jobs:
         with:
           toolchain: "1.99"
       - uses: Swatinem/rust-cache@v2
+      # With each crate's own [package.metadata.docs.rs] features: the PHP crates build without `embed` there.
       - name: Build each crate's docs as docs.rs does
         run: |
+          cargo metadata --format-version 1 --no-deps --locked > "$RUNNER_TEMP/metadata.json"
           for c in $(grep -v -e '^#' -e '^$' scripts/publish-crates.txt); do
-            DOCS_RS=1 RUSTDOCFLAGS="--cfg docsrs" cargo doc --no-deps --locked -p "$c" || exit 1
+            flags="$(jq -r --arg n "$c" '.packages[] | select(.name == $n) | .metadata.docs.rs
+              | [if ."no-default-features" then "--no-default-features" else empty end,
+                 if ."all-features" then "--all-features" else empty end] | join(" ")' "$RUNNER_TEMP/metadata.json")"
+            DOCS_RS=1 RUSTDOCFLAGS="--cfg docsrs" cargo doc --no-deps --locked $flags -p "$c" || exit 1
           done

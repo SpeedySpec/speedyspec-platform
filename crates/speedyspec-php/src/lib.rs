@@ -1,4 +1,6 @@
 #![doc = include_str!("../README.md")]
+// Without `embed` (docs.rs only) nothing can boot PHP, so the code only the engine reaches is unused there.
+#![cfg_attr(not(feature = "embed"), allow(dead_code, unused_imports))]
 //!
 //! ## In detail
 //!
