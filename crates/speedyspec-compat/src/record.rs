@@ -154,7 +154,7 @@ pub fn record(area: &str, version: &str) -> Result<PathBuf, String> {
 /// Records `area`'s single-site scenarios (`multisite` false) into `wordpress-<version>.json`, or its scenarios
 /// marked `multisite` on a multisite install into `wordpress-<version>-multisite.json`.
 pub fn record_for(area: &str, version: &str, multisite: bool) -> Result<PathBuf, String> {
-    if multisite && area != "options" {
+    if multisite && !has_setup(area) {
         return Err(format!(
             "the recorder has no multisite install for the area {area}"
         ));
@@ -212,6 +212,13 @@ fn runner_for(
     Ok(PhpRunner::new(php, setup))
 }
 
+/// Whether the area brings its own `compat/<area>/setup.php`, which loads WordPress's files (and, for
+/// `--multisite`, a multisite install) itself. Any such area can be recorded, single site or multisite.
+fn has_setup(area: &str) -> bool {
+    !matches!(area, "hooks" | "wp-db" | "object-cache")
+        && compat_dir().join(area).join("setup.php").is_file()
+}
+
 /// What prepares a fresh request for an area's scenarios.
 type Setup = Box<dyn Fn(&Php) -> Result<(), String>>;
 
@@ -223,13 +230,10 @@ fn setup_for(area: &str, root: &Path, multisite: bool) -> Result<Setup, String> 
             "wp-includes/class-wp-object-cache.php",
             "wp-includes/cache.php",
         ],
-        "options" | "formatting" | "shortcode" | "rewrite" | "kses" | "theme-json" | "cron" => &[],
+        _ if has_setup(area) => &[],
         other => return Err(format!("the recorder does not know the area {other}")),
     };
-    if matches!(
-        area,
-        "options" | "formatting" | "shortcode" | "rewrite" | "kses" | "theme-json" | "cron"
-    ) {
+    if has_setup(area) {
         // `setup.php` loads WordPress's files itself, for either side.
         let code = format!(
             "define('SPEEDYSPEC_COMPAT_WP_ROOT', {:?}); define('SPEEDYSPEC_COMPAT_PORT', false); \
@@ -305,5 +309,34 @@ mod tests {
             let fixture = dir.join(crate::fixture_name(&version, false));
             assert!(fixture.exists(), "{} is missing", fixture.display());
         }
+    }
+
+    /// An area with its own `setup.php` is recordable (multisite too); the file-list areas and an area with no
+    /// directory are not `setup.php` areas.
+    #[test]
+    fn setup_php_areas_are_recordable() {
+        let _held = crate::COMPAT_DIR_VARIABLE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("metadata")).expect("metadata/");
+        std::fs::write(dir.path().join("metadata/setup.php"), "<?php").expect("setup.php");
+        std::fs::create_dir_all(dir.path().join("hooks")).expect("hooks/");
+        std::fs::write(dir.path().join("hooks/setup.php"), "<?php").expect("setup.php");
+        let previous = std::env::var_os("SPEEDYSPEC_COMPAT_DIR");
+        // SAFETY: COMPAT_DIR_VARIABLE is held, so no other test reads or writes the variable meanwhile.
+        unsafe { std::env::set_var("SPEEDYSPEC_COMPAT_DIR", dir.path()) };
+        let answers = (
+            has_setup("metadata"),
+            has_setup("hooks"),
+            has_setup("nowhere"),
+        );
+        match previous {
+            // SAFETY: as above.
+            Some(v) => unsafe { std::env::set_var("SPEEDYSPEC_COMPAT_DIR", v) },
+            // SAFETY: as above.
+            None => unsafe { std::env::remove_var("SPEEDYSPEC_COMPAT_DIR") },
+        }
+        assert_eq!(answers, (true, false, false));
     }
 }
