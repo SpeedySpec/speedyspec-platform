@@ -13,7 +13,9 @@ Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platf
 
 - `Meta`: the metadata entity, a plain object that knows nothing about storage.
 - `MetaType`, `MetaKey`, `MetaId`, `ObjectId` and `SerializedValue`.
-- The repository ports, `MetaError`, and a `conformance` suite.
+- `Metadata`: the metadata API, one method per `meta.php` function, with `UpdateOutcome` and `MetadataError`.
+- `MetaKeys` (a read port over the registered keys) and `RegisteredMetaKey`.
+- The repository ports, `Installing`, `MetaError`, and a `conformance` suite.
 
 ## Install
 
@@ -44,7 +46,7 @@ Implementations live in speedyspec-server and are bound in the service container
 your own by implementing a port and binding it in their place; a PHP implementation replaces it through the
 seam's PHP twin.
 
-**Ports:** `Callables`, `DefaultSchemaCheck`, `MetaRepositories`, `MetaRepository`, `ObjectSubtypes`, `ProtectedMeta`, `RevisionSupport`.
+**Ports:** `Callables`, `DefaultSchemaCheck`, `Installing`, `MetaKeys`, `Metadata`, `MetaRepositories`, `MetaRepository`, `ObjectSubtypes`, `ProtectedMeta`, `RevisionSupport`.
 
 ## Versioning
 

@@ -96,3 +96,8 @@ pub trait ProtectedMeta {
     /// Whether `key` is protected for `meta_type` (the object type, as `register_meta()` passes it).
     fn is_protected(&self, key: &MetaKey, meta_type: &str) -> bool;
 }
+
+/// `wp_installing()`: whether WordPress is installing (some meta lookups skip the cache or the registry then).
+pub trait Installing {
+    fn installing(&self) -> bool;
+}
