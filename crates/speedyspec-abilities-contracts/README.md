@@ -44,6 +44,8 @@ assert_eq!(AbilityBinding::from_value(&binding.to_value()), Ok(binding));
 The Abilities transport in speedyspec-server implements these ports over `speedyspec-operation-contracts`. See
 the guide's ability seam.
 
+**Ports:** `AbilityHooks`, `AbilityMapping`, `AbilitySteps`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

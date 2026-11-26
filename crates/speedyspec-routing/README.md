@@ -7,7 +7,7 @@
 Routing contracts: routes, resolutions, route data, the table store, dispatch strategies and WordPress's routing concepts.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** contracts. **Seam:** `http`.
+**Role:** port. **Seam:** `http`.
 
 ## What it gives you
 

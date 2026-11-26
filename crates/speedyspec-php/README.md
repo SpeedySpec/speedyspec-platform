@@ -24,7 +24,12 @@ cargo add speedyspec-php
 
 ## Requirements
 
-A static PHP built by `scripts/build-php.sh` at `speedyspec-php`'s pinned `php-version`, with `SPEEDYSPEC_PHP_PREFIX`, `PHP`, `PHP_CONFIG` and `SODIUM_LIB_DIR` set; see [`speedyspec-php`](https://docs.rs/speedyspec-php). Rust 1.99.
+A static PHP built by [`scripts/build-php.sh`](https://github.com/SpeedySpec/speedyspec-platform/blob/main/scripts/build-php.sh) at `speedyspec-php`'s pinned `php-version`, with `SPEEDYSPEC_PHP_PREFIX`, `PHP`, `PHP_CONFIG` and `SODIUM_LIB_DIR` set. Rust 1.99.
+
+## Features
+
+- `embed` (on by default) links the embedded PHP. It is required to run PHP; without it, `Php::boot` returns an
+  error. It is off only for docs.rs builds, whose ext-php-rs bindings cannot build it.
 
 ## Example
 

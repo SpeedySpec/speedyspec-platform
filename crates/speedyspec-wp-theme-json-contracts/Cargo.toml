@@ -9,8 +9,8 @@ repository.workspace = true
 readme = "README.md"
 keywords = ["speedyspec", "wordpress", "theme-json", "themes", "contracts"]
 categories = ["web-programming"]
-# The package ships the library only; the tests run in this repository.
-exclude = ["tests/"]
+# The package ships the library only: the tests run in this repository, and tools/ exports the embedded data.
+exclude = ["tests/", "tools/"]
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

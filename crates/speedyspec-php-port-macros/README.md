@@ -22,7 +22,7 @@ cargo add speedyspec-php-port-macros
 
 ## Requirements
 
-A static PHP built by `scripts/build-php.sh` at `speedyspec-php`'s pinned `php-version`, with `SPEEDYSPEC_PHP_PREFIX`, `PHP`, `PHP_CONFIG` and `SODIUM_LIB_DIR` set; see [`speedyspec-php`](https://docs.rs/speedyspec-php). Rust 1.99.
+A static PHP built by [`scripts/build-php.sh`](https://github.com/SpeedySpec/speedyspec-platform/blob/main/scripts/build-php.sh) at `speedyspec-php`'s pinned `php-version`, with `SPEEDYSPEC_PHP_PREFIX`, `PHP`, `PHP_CONFIG` and `SODIUM_LIB_DIR` set. Rust 1.99.
 
 ## Example
 

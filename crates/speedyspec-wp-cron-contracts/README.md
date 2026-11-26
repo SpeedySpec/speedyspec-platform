@@ -44,6 +44,8 @@ assert_eq!(empty.to_value(), Value::Array(vec![]));
 The cron port in speedyspec-server implements `wp_schedule_event()` and the rest of `cron.php` over these
 contracts. See the guide's cron seam.
 
+**Ports:** `ArgsKeyer`, `Clock`, `CronStore`, `DoingCron`, `ErrorReporter`, `NetworkSites`, `PhpObjects`, `SiteSwitcher`, `Translator`, `WakeReporter`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

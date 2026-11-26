@@ -45,11 +45,13 @@ assert_eq!(locale.locale().unwrap(), "de_DE");
 
 ## Where it fits
 
-Implementations live in speedyspec-server and bind to the port's key in the service container
-(`speedyspec-container`). Bind your own by implementing the trait and binding it under the same key; a PHP
-implementation replaces it through the seam's PHP twin.
+Implementations live in speedyspec-server and are bound in the service container (`speedyspec-container`). Bind
+your own by implementing a port and binding it in their place; a PHP implementation replaces it through the
+seam's PHP twin.
 
 See the guide's text seam.
+
+**Ports:** `Diagnostics`, `LinkContext`, `Locale`, `MimeTypes`, `RandomSource`, `SiteSettings`, `Smilies`, `TexturizeOverrides`, `Translator`.
 
 ## Versioning
 

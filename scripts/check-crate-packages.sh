@@ -19,7 +19,8 @@ repository="https://github.com/SpeedySpec/speedyspec-platform"
 
 metadata="$(mktemp)"
 files="$(mktemp)"
-trap 'rm -f "$metadata" "$files"' EXIT
+errors="$(mktemp)"
+trap 'rm -f "$metadata" "$files" "$errors"' EXIT
 (cd "$repo" && cargo metadata --format-version 1 --no-deps) > "$metadata"
 
 failed=0
@@ -40,12 +41,12 @@ for name in $(grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' "$list_file"); do
           end
     ' "$metadata")"
 
-    if (cd "$repo" && cargo package --list --allow-dirty -p "$name") > "$files" 2>/dev/null; then
+    if (cd "$repo" && cargo package --list --allow-dirty -p "$name") > "$files" 2> "$errors"; then
         grep -qx LICENSE "$files" || problems+=$'\n'"$name: no LICENSE"
         grep -qx README.md "$files" || problems+=$'\n'"$name: no README.md"
         if grep -q '^tests/' "$files"; then problems+=$'\n'"$name: ships tests/"; fi
     else
-        problems+=$'\n'"$name: cargo package --list failed"
+        problems+=$'\n'"$name: cargo package --list failed:"$'\n'"$(cat "$errors")"
     fi
 
     problems="$(sed '/^$/d' <<<"$problems")"

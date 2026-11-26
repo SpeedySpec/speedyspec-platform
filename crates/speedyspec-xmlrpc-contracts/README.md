@@ -45,6 +45,8 @@ assert_eq!(Fault::new(404, "Not found").code, 404);
 The XML-RPC transport in speedyspec-server implements these ports (`PhpXmlRpcLogin` calls `wp_authenticate()`).
 See the guide's xmlrpc seam.
 
+**Ports:** `FaultMapping`, `XmlRpcHooks`, `XmlRpcLogin`, `XmlRpcMapping`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

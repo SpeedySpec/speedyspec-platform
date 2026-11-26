@@ -7,7 +7,7 @@
 What speedyspec-server and speedyspec-php-runtime agree on: the worker spec, the per-request report and the contract version.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** contracts. **Seam:** [`container`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/container).
+**Role:** platform. **Seam:** [`container`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/container).
 
 ## What it gives you
 

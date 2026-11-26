@@ -43,6 +43,8 @@ assert!(!DATA_RELEASE.is_empty());
 The theme.json port in speedyspec-server implements these ports, and checks that `DATA_RELEASE` matches its
 compat area's WordPress release. See the guide's theme seam.
 
+**Ports:** `ActiveTheme`, `BlockMetadata`, `BlockStyleVariationRegistrar`, `Capabilities`, `Diagnostics`, `Gettext`, `GlobalSettings`, `GlobalStylesPost`, `LayerFilters`, `TextFunctions`, `ThemeJsonFilters`, `WpCache`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

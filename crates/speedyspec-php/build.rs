@@ -31,6 +31,12 @@ fn main() {
     if env::var_os("DOCS_RS").is_some() {
         return;
     }
+    if env::var_os("CARGO_FEATURE_EMBED").is_none() {
+        println!(
+            "cargo:warning=speedyspec-php is built without its `embed` feature: Php::boot will return an error. \
+             Only docs.rs builds should turn it off."
+        );
+    }
 
     let prefix = env::var_os("SPEEDYSPEC_PHP_PREFIX")
         .map(PathBuf::from)

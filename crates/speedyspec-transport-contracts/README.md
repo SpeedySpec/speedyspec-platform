@@ -7,7 +7,7 @@
 The unified operation API's transport contracts: the Transport port and its default mapping, bindings, exposure lookup, authentication, codecs and hook stages.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** contracts. **Seam:** `operation`.
+**Role:** contracts. **Seam:** [`operation`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/operation).
 
 ## What it gives you
 
@@ -39,6 +39,8 @@ assert!(TransportName::parse("Not Valid").is_err());
 
 Each transport (REST, XML-RPC, Abilities) implements these ports in speedyspec-server, over
 `speedyspec-operation-contracts`.
+
+**Ports:** `Authenticator`, `BindingStore`, `Codec`, `ExposureLookup`, `StageHooks`, `Transport`, `TransportHooks`.
 
 ## Versioning
 

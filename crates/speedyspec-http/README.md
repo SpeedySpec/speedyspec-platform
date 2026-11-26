@@ -45,6 +45,8 @@ assert_eq!(headers.get("content-type"), Some("text/html".to_owned()));
 The server's HTTP message implementation and its handlers implement these contracts. The REST and XML-RPC
 transports use them for their requests and responses.
 
+**Ports:** `Body`, `Client`, `Handler`, `Message`, `Middleware`, `Request`, `RequestFactory`, `Response`, `ResponseFactory`, `ServerRequest`, `ServerRequestFactory`, `StreamFactory`, `UploadedFile`, `UploadedFileFactory`, `Uri`, `UriFactory`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

@@ -7,7 +7,7 @@
 FastCGI 1.0: records and name-value pairs, a blocking responder (the PHP worker's side) and an async client (the server's side), streaming in both directions with backpressure.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** port. **Seam:** [`container`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/container).
+**Role:** platform. **Seam:** [`container`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/container).
 
 ## What it gives you
 

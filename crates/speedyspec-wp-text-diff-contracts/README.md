@@ -48,6 +48,8 @@ assert_eq!(EqualOnly.diff(&lines, &lines), vec![DiffOp::Copy { orig: 0..2, fin: 
 
 `speedyspec-wp-text-diff` implements these. See the guide's text-diff seam.
 
+**Ports:** `CheckedLineFilter`, `LineHtmlFilter`, `SequenceDiffer`, `TextDiffHost`, `TextDiffer`, `WhitespaceNormalizer`. **Container keys:** `TEXT_DIFFER`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

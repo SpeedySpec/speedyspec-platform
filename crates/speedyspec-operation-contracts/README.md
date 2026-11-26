@@ -7,7 +7,7 @@
 The unified operation API's contracts: the neutral value, schemas, types, operations, errors, the caller and the ports. Depends on no SpeedySpec crate.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** contracts. **Seam:** `operation`.
+**Role:** contracts. **Seam:** [`operation`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/operation).
 
 ## What it gives you
 
@@ -44,6 +44,8 @@ assert_eq!(Value::default(), Value::Null);
 REST, XML-RPC and Abilities each expose operations through their transport contracts
 (`speedyspec-rest-contracts`, `speedyspec-xmlrpc-contracts`, `speedyspec-abilities-contracts`). The dispatcher
 and catalogs live in speedyspec-server. This crate depends on no SpeedySpec crate.
+
+**Ports:** `ContractMapper`, `Extract`, `Hydrate`, `Identity`, `OperationCatalog`, `PermissionCheck`, `TypeCatalog`.
 
 ## Versioning
 

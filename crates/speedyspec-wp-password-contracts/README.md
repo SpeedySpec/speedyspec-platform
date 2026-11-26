@@ -41,6 +41,8 @@ assert_eq!(PASSWORD_CHECKER, "SpeedySpec\\WpPassword\\PasswordChecker");
 The bcrypt implementation in speedyspec-server binds these keys; `wp_hash_password()` and friends are its
 pluggable functions, so PHP may rebind each one. See the guide's password seam.
 
+**Ports:** `Bcrypt`, `PasswordChecker`, `PasswordCostLimits`, `PasswordFilters`, `PasswordGenerator`, `PasswordHasher`, `RandomNumber`, `RehashPolicy`, `Warnings`, `WpHasherGlobal`. **Container keys:** `PASSWORD_HASHER`, `PASSWORD_CHECKER`, `REHASH_POLICY`, `PASSWORD_GENERATOR`, `RANDOM_NUMBER`, `PASSWORD_COST_LIMITS`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

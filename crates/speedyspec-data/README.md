@@ -48,6 +48,8 @@ assert_eq!(row.get("title"), Some(&DbValue::Text("Hello".to_owned())));
 The data engines (MySQL, SQLite and the others) implement these ports in speedyspec-server.
 `speedyspec-wp-db-contracts` builds `wpdb` on top of them.
 
+**Ports:** `Dialect`, `DirectStore`, `Engine`, `EngineFactory`, `EngineLookup`, `Identified`, `Introspector`, `NoSqlStore`, `PendingChange`, `Repository`, `SqlStore`, `UnitOfWork`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

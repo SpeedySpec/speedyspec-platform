@@ -50,6 +50,8 @@ assert_eq!(append_a.call(&[HookValue::Str("x".to_owned())]).unwrap(), HookValue:
 `speedyspec-wp-hooks` implements `HookApi` (`WpHookApi`). Another seam takes `Rc<dyn HookApi>` from the container,
 so it never links the implementation. See the guide's hooks seam.
 
+**Ports:** `HookApi`, `HookCallback`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

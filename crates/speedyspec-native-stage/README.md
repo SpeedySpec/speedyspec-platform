@@ -61,6 +61,8 @@ assert_eq!(chain.answer(&StageRequest { params: &params }), StageOutcome::Contin
 The runtime builds a `StageChain` once per worker. Native replacements of plugins (caches, firewalls, sitemaps)
 are stages in speedyspec-server.
 
+**Ports:** `NativeStage`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

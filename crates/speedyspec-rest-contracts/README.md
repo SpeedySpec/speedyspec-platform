@@ -47,6 +47,8 @@ assert_eq!(RestBinding::from_value(&binding.to_value()).unwrap(), binding);
 The REST transport in speedyspec-server implements these, over `speedyspec-operation-contracts` and
 `speedyspec-transport-contracts`. See the guide's rest-api seam.
 
+**Ports:** `RestHooks`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

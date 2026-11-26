@@ -42,6 +42,8 @@ assert!(!AttrRules::Allowed.is_required());
 `speedyspec-wp-kses-lexical` holds kses's pure string functions over these types, and the kses port in
 speedyspec-server implements the rest. See the guide's html seam.
 
+**Ports:** `AllowedHtmlSource`, `AttributeEscaper`, `HtmlApiSanitizer`, `Kses`, `KsesLexical`, `OperatingMode`, `SafeCss`, `UnfilteredHtmlPolicy`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

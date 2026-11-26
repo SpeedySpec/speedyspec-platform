@@ -50,6 +50,8 @@ assert_eq!(shout(&[Value::Str("hi".to_owned())]).unwrap(), Value::Str("HI".to_ow
 `speedyspec-hooks-memory` is the in-memory backend, and `speedyspec-php` exposes the registry to PHP as
 `SpeedySpec\Hooks\Hook`. Bind your own backend by implementing `Hooks` and running the `conformance` suite.
 
+**Ports:** `Hooks`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

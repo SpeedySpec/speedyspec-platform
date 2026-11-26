@@ -40,6 +40,8 @@ assert!(TagName::new(b"bad tag").is_err());
 
 The Shortcode API port in speedyspec-server implements these. See the guide's shortcode seam.
 
+**Ports:** `AttsParser`, `Diagnostics`, `HtmlSplitter`, `KsesAttributes`, `PhpStrings`, `ShortcodeFilters`, `ShortcodeHandler`, `ShortcodeRegistry`, `ShortcodeScanner`, `ShortcodeTagNames`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

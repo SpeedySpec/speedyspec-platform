@@ -42,6 +42,8 @@ assert!(php_truthy(&PhpValue::Str("de_DE".to_owned())));
 The translations port in speedyspec-server (`.mo`, `.l10n.php` and the text domain registry) implements these.
 See the guide's i18n seam.
 
+**Ports:** `FileProbe`, `LocaleStrings`, `ScriptSources`, `SwitchEffects`, `TranslationFileCache`, `TranslationFileReader`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

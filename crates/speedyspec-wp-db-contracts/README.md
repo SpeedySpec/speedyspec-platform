@@ -41,6 +41,8 @@ assert_eq!(outcome.to_wp(), WpValue::Int(3));
 The `wpdb` port in speedyspec-server implements `Wpdb` over the data engines (`speedyspec-data`). Options,
 posts and meta take `Rc<dyn Wpdb>` from the container.
 
+**Ports:** `Wpdb`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

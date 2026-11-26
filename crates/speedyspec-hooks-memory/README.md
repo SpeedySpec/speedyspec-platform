@@ -7,7 +7,7 @@
 In-memory backend for the speedyspec hook contract.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
-**Role:** adapter (reference). **Seam:** [`hooks`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/hooks).
+**Role:** adapter. **Seam:** [`hooks`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/hooks).
 
 ## What it gives you
 

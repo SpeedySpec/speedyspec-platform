@@ -43,6 +43,8 @@ let _: fn(&dyn CachingStore, &str) -> Result<Option<String>, CacheError> = cache
 The in-memory, Redis and memcached stores implement it in speedyspec-server, and the object cache is built on it.
 Bind your own store by implementing `CachingStore`.
 
+**Ports:** `CachingStore`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP

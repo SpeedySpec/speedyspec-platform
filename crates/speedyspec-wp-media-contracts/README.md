@@ -44,6 +44,8 @@ assert_eq!(limits.deadline, Duration::from_secs(5));
 
 The FFmpeg-backed reader in speedyspec-server implements `MediaReader`. See the guide's media seam.
 
+**Ports:** `ContentSniffer`, `MediaReader`, `TagSanitizer`, `TimeParser`. **Container keys:** `MEDIA_READER`.
+
 ## Versioning
 
 SemVer, 0.x: a minor version may break the API. MSRV is Rust 1.99. SpeedySpec's own version (ADR-028) is the PHP
