@@ -8,10 +8,11 @@
 #   scripts/publish-pending.sh <metadata.json>
 #
 # Prints `published <crate> <version>` per crate. crates.io rate-limits publishing (new crates especially): on an
-# answer containing `429` or `Too Many Requests`, it waits $PUBLISH_BACKOFF seconds (default 600, crates.io's refill
-# interval for new crates) and tries the same crate again, up to $PUBLISH_RETRIES times (default 36). Any other
-# failure stops the run, so nothing publishes ahead of a crate it may depend on. A run that stopped can be run again:
-# what is already on crates.io is no longer pending.
+# answer containing `429` or `Too Many Requests`, it waits until the time crates.io says to try again after (when GNU
+# date can read it), or else $PUBLISH_BACKOFF seconds (default 600, crates.io's refill interval for new crates), and
+# tries the same crate again, up to $PUBLISH_RETRIES times (default 36). Any other failure stops the run, so nothing
+# publishes ahead of a crate it may depend on. A run that stopped can be run again: what is already on crates.io is no
+# longer pending.
 #
 # CARGO_PUBLISH replaces `cargo publish` (the tests use a fake); it gets the same arguments. SPEEDYSPEC_REPO and
 # SPEEDYSPEC_CRATES_INDEX are passed on to release-crates.sh.
@@ -28,6 +29,19 @@ publish() {
         "$CARGO_PUBLISH" "$@"
     else
         cargo publish "$@"
+    fi
+}
+
+# How long to wait after a 429: until the time crates.io names ("Please try again after <HTTP date>"), plus a few
+# seconds, when GNU date can read it; else $PUBLISH_BACKOFF.
+retry_wait() {
+    local after target now
+    after="$(sed -n 's/.*[Tt]ry again after \([A-Z][a-z][a-z], [0-9][0-9]* [A-Z][a-z][a-z] [0-9]* [0-9:]* GMT\).*/\1/p' "$1" | head -n 1)"
+    if [ -n "$after" ] && target="$(date -u -d "$after" +%s 2>/dev/null)"; then
+        now="$(date -u +%s)"
+        if [ "$target" -le "$now" ]; then echo 1; else echo $((target - now + 5)); fi
+    else
+        echo "$backoff"
     fi
 }
 
@@ -52,8 +66,9 @@ for name in $pending; do
         fi
         if grep -q -E '(^|[^0-9.])429([^0-9.]|$)|Too Many Requests' "$log" && [ "$attempt" -lt "$retries" ]; then
             attempt=$((attempt + 1))
-            echo "rate-limited publishing $name: waiting ${backoff}s (retry $attempt of $retries)"
-            sleep "$backoff"
+            wait="$(retry_wait "$log")"
+            echo "rate-limited publishing $name: waiting ${wait}s (retry $attempt of $retries)"
+            sleep "$wait"
             continue
         fi
         echo "publishing $name $version failed (exit $status); stopping" >&2

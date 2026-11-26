@@ -44,6 +44,13 @@ if [ "$crate" = speedyspec-bbbb ]; then
                 exit 101
             fi
             ;;
+        429-dated)
+            if [ ! -e "$FAKE_WORK/limited" ]; then
+                touch "$FAKE_WORK/limited"
+                echo "Caused by: the remote server responded with an error (status 429 Too Many Requests): You have published too many new crates in a short period of time. Please try again after Wed, 26 Nov 2025 12:00:00 GMT and see https://crates.io/docs/rate-limits for more details." >&2
+                exit 101
+            fi
+            ;;
         verify)
             echo "error: failed to verify package tarball" >&2
             exit 101
@@ -83,6 +90,17 @@ elif ! grep -q -- '--no-verify --locked -p speedyspec-aaaa$' "$work/attempts"; t
     fail "429: arguments $(head -1 "$work/attempts")"
 else
     echo "ok: 429 is retried after the backoff"
+fi
+
+# 1b. A 429 naming a retry time already past waits 1s, where GNU date can read the time; elsewhere, $PUBLISH_BACKOFF.
+if date -u -d 'Wed, 26 Nov 2025 12:00:00 GMT' +%s >/dev/null 2>&1; then want_wait=1; else want_wait=0; fi
+run 429-dated "$empty_index"
+if [ "$status" -ne 0 ] || [ "$(grep -c '^published ' <<<"$output")" -ne 3 ]; then
+    fail "429-dated: exit $status (output: $output)"
+elif ! grep -q "rate-limited publishing speedyspec-bbbb: waiting ${want_wait}s (retry 1 of 3)" <<<"$output"; then
+    fail "429-dated: want a ${want_wait}s wait (output: $output)"
+else
+    echo "ok: a 429's retry time is honoured (${want_wait}s)"
 fi
 
 # 2. Any other failure stops the run: exit 1, and the third crate is never attempted.
