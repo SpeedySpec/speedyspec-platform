@@ -8,13 +8,17 @@
 pub mod conformance;
 mod entity;
 mod error;
+mod keys;
+mod metadata;
 mod ports;
 mod values;
 
 pub use entity::Meta;
-pub use error::MetaError;
+pub use error::{MetaError, MetadataError};
+pub use keys::{MetaKeys, RegisteredMetaKey};
+pub use metadata::{Metadata, UpdateOutcome};
 pub use ports::{
-    Callables, DefaultSchemaCheck, MetaRepositories, MetaRepository, ObjectSubtypes, ProtectedMeta,
-    RevisionSupport,
+    Callables, DefaultSchemaCheck, Installing, MetaRepositories, MetaRepository, ObjectSubtypes,
+    ProtectedMeta, RevisionSupport,
 };
 pub use values::{MetaId, MetaKey, MetaType, ObjectId, SerializedValue};
