@@ -28,3 +28,7 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
+
+[dev-dependencies]
+# The README example uses the attribute through speedyspec-php-ext, whose runtime pieces the generated code calls.
+speedyspec-php-ext = { path = "../speedyspec-php-ext" }

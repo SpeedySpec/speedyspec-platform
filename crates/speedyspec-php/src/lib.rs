@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Embedded, statically linked PHP for speedyspec.
 //!
 //! [`Php::boot`] starts the interpreter once per process. PHP is

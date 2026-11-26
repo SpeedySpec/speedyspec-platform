@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! Recorded compatibility.
 //!
 //! An area's behaviour is pinned by a catalogue of scenarios (`compat/<area>/scenarios.json`, a [`Catalogue`]). The

@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! The service container: Laravel's container's functionality, in Rust.
 //!
 //! Every key (a port's name, a class or an alias) holds a stack of entries: bindings (a factory, transient,

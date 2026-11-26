@@ -19,7 +19,7 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all --check
 
-  # Every crate but the five that link the static PHP; the php job lints those.
+  # Every crate but the six whose builds or tests link the static PHP; the php job lints those.
   clippy:
     runs-on: ubuntu-latest
     steps:
@@ -32,10 +32,10 @@ jobs:
       - run: >-
           cargo clippy --workspace --all-targets --locked
           --exclude speedyspec-php --exclude speedyspec-php-ext --exclude speedyspec-container-php
-          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php
+          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php --exclude speedyspec-php-port-macros
           -- -D warnings
 
-  # Without the static PHP: every crate but the five that link it (the php job runs those).
+  # Without the static PHP: every crate but the six that link it (the php job runs those).
   test:
     strategy:
       fail-fast: false
@@ -58,9 +58,9 @@ jobs:
       - run: >-
           cargo test --workspace --locked --target ${{ matrix.target }}
           --exclude speedyspec-php --exclude speedyspec-php-ext --exclude speedyspec-container-php
-          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php
+          --exclude speedyspec-compat --exclude speedyspec-wp-hooks-php --exclude speedyspec-php-port-macros
 
-  # The static PHP (scripts/build-php.sh) and the five crates that embed it.
+  # The static PHP (scripts/build-php.sh) and the six crates whose builds or tests embed it.
   php:
     strategy:
       fail-fast: false
@@ -115,12 +115,13 @@ jobs:
         run: >-
           cargo clippy --all-targets --locked
           -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-compat -p speedyspec-wp-hooks-php
+          -p speedyspec-php-port-macros
           -- -D warnings
       - name: Test with php
         run: >-
           ${{ matrix.run }} cargo test --locked
           -p speedyspec-php -p speedyspec-php-ext -p speedyspec-container-php -p speedyspec-compat
-          -p speedyspec-wp-hooks-php
+          -p speedyspec-wp-hooks-php -p speedyspec-php-port-macros
 
   # The publish list matches the workspace, and the platform is closed: nothing outside this repository and crates.io.
   crates:

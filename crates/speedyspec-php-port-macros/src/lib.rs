@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+//!
+//! ## In detail
+//!
 //! `#[php_port(name = "PHP\\Interface\\Name")]` on a Rust port trait generates:
 //!
 //! - the trait itself, unchanged;
