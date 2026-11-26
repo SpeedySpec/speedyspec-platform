@@ -1,0 +1,5 @@
+[workspace]
+members = ["crates/*"]
+
+[patch.crates-io]
+speedyspec-hooks = { path = "x" }

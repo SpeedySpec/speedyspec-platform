@@ -1,0 +1,265 @@
+{
+  "packages": [
+    {
+      "name": "speedyspec-wp-token-map",
+      "version": "0.5.0",
+      "id": "path+file:///repo/crates/speedyspec-wp-token-map#0.5.0",
+      "license": "MIT",
+      "source": null,
+      "dependencies": [
+        {
+          "name": "memchr",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        },
+        {
+          "name": "serde_json",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": "dev",
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        }
+      ],
+      "manifest_path": "/repo/crates/speedyspec-wp-token-map/Cargo.toml",
+      "publish": null
+    },
+    {
+      "name": "speedyspec-wp-kses-contracts",
+      "version": "0.5.0",
+      "id": "path+file:///repo/crates/speedyspec-wp-kses-contracts#0.5.0",
+      "license": "MIT",
+      "source": null,
+      "dependencies": [
+        {
+          "name": "indexmap",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        },
+        {
+          "name": "speedyspec-hooks",
+          "source": "git+https://github.com/SpeedySpec/speedyspec-server?branch=main#0123456789abcdef0123456789abcdef01234567",
+          "req": "1",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        }
+      ],
+      "manifest_path": "/repo/crates/speedyspec-wp-kses-contracts/Cargo.toml",
+      "publish": null
+    },
+    {
+      "name": "speedyspec-wp-html-syntax",
+      "version": "0.5.0",
+      "id": "path+file:///repo/crates/speedyspec-wp-html-syntax#0.5.0",
+      "license": "MIT",
+      "source": null,
+      "dependencies": [
+        {
+          "name": "memchr",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        },
+        {
+          "name": "speedyspec-wp-token-map",
+          "source": null,
+          "req": "^0.5.0",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null,
+          "path": "/repo/crates/speedyspec-wp-token-map"
+        },
+        {
+          "name": "serde_json",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": "dev",
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        }
+      ],
+      "manifest_path": "/repo/crates/speedyspec-wp-html-syntax/Cargo.toml",
+      "publish": null
+    },
+    {
+      "name": "speedyspec-wp-kses-lexical",
+      "version": "0.5.0",
+      "id": "path+file:///repo/crates/speedyspec-wp-kses-lexical#0.5.0",
+      "license": "MIT",
+      "source": null,
+      "dependencies": [
+        {
+          "name": "indexmap",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        },
+        {
+          "name": "memchr",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        },
+        {
+          "name": "speedyspec-wp-html-syntax",
+          "source": null,
+          "req": "^0.5.0",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null,
+          "path": "/repo/crates/speedyspec-wp-html-syntax"
+        },
+        {
+          "name": "speedyspec-wp-kses-contracts",
+          "source": null,
+          "req": "^0.5.0",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null,
+          "path": "/repo/crates/speedyspec-wp-kses-contracts"
+        },
+        {
+          "name": "proptest",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": "dev",
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        },
+        {
+          "name": "serde_json",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": "dev",
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        }
+      ],
+      "manifest_path": "/repo/crates/speedyspec-wp-kses-lexical/Cargo.toml",
+      "publish": null
+    },
+    {
+      "name": "speedyspec-wp-html-split",
+      "version": "0.5.0",
+      "id": "path+file:///repo/crates/speedyspec-wp-html-split#0.5.0",
+      "license": "MIT",
+      "source": null,
+      "dependencies": [
+        {
+          "name": "memchr",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": null,
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        },
+        {
+          "name": "criterion",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "req": "1",
+          "kind": "dev",
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null
+        },
+        {
+          "name": "speedyspec-wp-kses-lexical",
+          "source": null,
+          "req": "^0.5.0",
+          "kind": "dev",
+          "rename": null,
+          "optional": false,
+          "uses_default_features": true,
+          "features": [],
+          "target": null,
+          "registry": null,
+          "path": "/repo/crates/speedyspec-wp-kses-lexical"
+        }
+      ],
+      "manifest_path": "/repo/crates/speedyspec-wp-html-split/Cargo.toml",
+      "publish": null
+    }
+  ],
+  "workspace_members": [
+    "path+file:///repo/crates/speedyspec-wp-token-map#0.5.0",
+    "path+file:///repo/crates/speedyspec-wp-kses-contracts#0.5.0",
+    "path+file:///repo/crates/speedyspec-wp-html-syntax#0.5.0",
+    "path+file:///repo/crates/speedyspec-wp-kses-lexical#0.5.0",
+    "path+file:///repo/crates/speedyspec-wp-html-split#0.5.0"
+  ],
+  "target_directory": "/repo/target",
+  "version": 1,
+  "workspace_root": "/repo"
+}
