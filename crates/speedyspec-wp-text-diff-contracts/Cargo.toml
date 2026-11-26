@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-wp-text-diff-contracts"
-version = "0.2.0"
+version = "0.3.0"
 description = "Contracts for WordPress's text diff: edit operations, table options, and the differ and line filter ports."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,4 +22,4 @@ seam = "text-diff"
 role = "contracts"
 
 [dependencies]
-speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.2.0" }

@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-wp-object-cache-contracts"
-version = "0.1.0"
+version = "0.2.0"
 description = "The object cache port (wp_cache_*, as other seams call it) and its errors."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,4 +22,4 @@ seam = "object-cache"
 role = "contracts"
 
 [dependencies]
-speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.2.0" }

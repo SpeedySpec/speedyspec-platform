@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-wp-hooks-php"
-version = "0.1.10"
+version = "0.2.0"
 description = "WordPress's hook functions, WP_Hook and the hook globals in PHP, native over the Rust Hook API."
 edition.workspace = true
 rust-version.workspace = true
@@ -28,13 +28,13 @@ default = ["embed"]
 embed = ["speedyspec-php/embed", "speedyspec-php-ext/embed"]
 
 [dependencies]
-speedyspec-container = { path = "../speedyspec-container", version = "0.1.4" }
-speedyspec-cqrs = { path = "../speedyspec-cqrs", version = "0.1.4" }
-speedyspec-php = { path = "../speedyspec-php", version = "0.7.0", default-features = false }
-speedyspec-php-ext = { path = "../speedyspec-php-ext", version = "0.1.6", default-features = false }
-speedyspec-wp-hooks = { path = "../speedyspec-wp-hooks", version = "0.1.4" }
-speedyspec-wp-hooks-memory = { path = "../speedyspec-wp-hooks-memory", version = "0.1.4" }
-speedyspec-wp-hooks-contracts = { path = "../speedyspec-wp-hooks-contracts", version = "0.1.0" }
+speedyspec-container = { path = "../speedyspec-container", version = "0.2.0" }
+speedyspec-cqrs = { path = "../speedyspec-cqrs", version = "0.2.0" }
+speedyspec-php = { path = "../speedyspec-php", version = "0.8.0", default-features = false }
+speedyspec-php-ext = { path = "../speedyspec-php-ext", version = "0.2.0", default-features = false }
+speedyspec-wp-hooks = { path = "../speedyspec-wp-hooks", version = "0.2.0" }
+speedyspec-wp-hooks-memory = { path = "../speedyspec-wp-hooks-memory", version = "0.2.0" }
+speedyspec-wp-hooks-contracts = { path = "../speedyspec-wp-hooks-contracts", version = "0.2.0" }
 
 [dev-dependencies]
 serde_json = "1"

@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-xmlrpc-contracts"
-version = "0.1.0"
+version = "0.2.0"
 description = "The XML-RPC transport's contracts: the binding, method calls and responses, faults, and the mapping, fault, hooks and login ports."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,4 +22,4 @@ seam = "xmlrpc"
 role = "contracts"
 
 [dependencies]
-speedyspec-operation-contracts = { path = "../speedyspec-operation-contracts", version = "0.1.0" }
+speedyspec-operation-contracts = { path = "../speedyspec-operation-contracts", version = "0.2.0" }

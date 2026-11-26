@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-wp-html-syntax"
-version = "0.5.0"
+version = "0.6.0"
 description = "WordPress's HTML API syntax pieces: WP_HTML_Decoder, the HTML5 named character references, start-tag attributes."
 edition.workspace = true
 rust-version.workspace = true
@@ -23,4 +23,4 @@ role = "implementation"
 
 [dependencies]
 memchr = "2"
-speedyspec-wp-token-map = { path = "../speedyspec-wp-token-map", version = "0.5.0" }
+speedyspec-wp-token-map = { path = "../speedyspec-wp-token-map", version = "0.6.0" }

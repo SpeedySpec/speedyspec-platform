@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-abilities-contracts"
-version = "0.1.0"
+version = "0.2.0"
 description = "The Abilities transport's contracts: the ability binding and annotations, and the mapping, hooks and steps ports."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,4 +22,4 @@ seam = "ability"
 role = "contracts"
 
 [dependencies]
-speedyspec-operation-contracts = { path = "../speedyspec-operation-contracts", version = "0.1.0" }
+speedyspec-operation-contracts = { path = "../speedyspec-operation-contracts", version = "0.2.0" }

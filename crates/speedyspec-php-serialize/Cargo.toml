@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-php-serialize"
-version = "0.2.0"
+version = "0.3.0"
 description = "PHP's serialize format in Rust: serialize, unserialize, maybe_serialize, and conversions to hook values."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,4 +22,4 @@ seam = "container"
 role = "platform"
 
 [dependencies]
-speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.2.0" }

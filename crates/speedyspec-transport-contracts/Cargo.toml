@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-transport-contracts"
-version = "0.1.0"
+version = "0.2.0"
 description = "The unified operation API's transport contracts: the Transport port and its default mapping, bindings, exposure lookup, authentication, codecs and hook stages."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,5 +22,5 @@ seam = "operation"
 role = "contracts"
 
 [dependencies]
-speedyspec-operation-contracts = { path = "../speedyspec-operation-contracts", version = "0.1.0" }
+speedyspec-operation-contracts = { path = "../speedyspec-operation-contracts", version = "0.2.0" }
 thiserror = "2"

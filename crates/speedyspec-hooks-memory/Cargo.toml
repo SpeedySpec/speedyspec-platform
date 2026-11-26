@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-hooks-memory"
-version = "0.1.4"
+version = "0.2.0"
 description = "In-memory backend for the speedyspec hook contract."
 edition.workspace = true
 rust-version.workspace = true
@@ -22,7 +22,7 @@ seam = "hooks"
 role = "adapter"
 
 [dependencies]
-speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.1.4" }
+speedyspec-hooks = { path = "../speedyspec-hooks", version = "0.2.0" }
 
 [dev-dependencies]
 speedyspec-hooks = { path = "../speedyspec-hooks", features = ["conformance"] }
