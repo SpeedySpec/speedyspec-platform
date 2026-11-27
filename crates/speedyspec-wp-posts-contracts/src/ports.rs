@@ -189,7 +189,9 @@ pub trait PostRepository {
     ///   post_status = 'publish' AND post_type IN ({types}) ORDER BY post_{field}_gmt DESC LIMIT 1`. The `0` is
     ///   PHP's `gmdate( 'Z' )`, which is always `0`.
     ///
-    /// The newest published post's date, ordered by the GMT column whichever column is read. A zero date
+    /// The newest published post's date, ordered by the GMT column whichever column is read. For
+    /// [`Timezone::Server`] it is `DATE_ADD`'s text, which carries microseconds (`2024-03-01 20:00:00.000000`)
+    /// because the interval is a string; WordPress returns that unchanged. A zero date
     /// (`0000-00-00 00:00:00`) comes back as stored: WordPress caches and returns it. `None` when no row matches or
     /// the value is `NULL` (MySQL's `DATE_ADD` on a zero date, checked by `conformance::mysql_suite`).
     fn last_post_time(
