@@ -626,7 +626,9 @@ fn last_post_time(repo: &dyn PostRepository) {
     };
     let at = |s: &str| Some(s.to_string());
 
-    // last_post_time_orders_by_the_gmt_column: the newest published post by GMT, whichever column is read.
+    // last_post_time_orders_by_the_gmt_column: the newest published post by GMT, whichever column is read. Server
+    // time is MySQL's `DATE_ADD(.., INTERVAL '0' SECOND)`: the string interval makes the result carry microseconds,
+    // `.000000`, and WordPress returns it as is.
     insert(&dated(
         "rd-last",
         "publish",
@@ -663,7 +665,7 @@ fn last_post_time(repo: &dyn PostRepository) {
         "last_post_time_orders_by_the_gmt_column",
         blog == at("2024-03-02 01:00:00")
             && gmt == at("2024-03-01 20:00:00")
-            && server == at("2024-03-01 20:00:00")
+            && server == at("2024-03-01 20:00:00.000000")
             && either == at("2024-03-01 20:00:00"),
         || format!("{blog:?} {gmt:?} {server:?} {either:?}"),
     );
