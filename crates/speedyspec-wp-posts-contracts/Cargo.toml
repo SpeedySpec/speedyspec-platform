@@ -22,6 +22,8 @@ seam = "query"
 role = "contracts"
 
 [dependencies]
+speedyspec-wp-hooks-contracts = { path = "../speedyspec-wp-hooks-contracts", version = "0.2.0" }
+speedyspec-wp-object-cache-contracts = { path = "../speedyspec-wp-object-cache-contracts", version = "0.2.0" }
 speedyspec-php-serialize = { path = "../speedyspec-php-serialize", version = "0.3.0" }
 
 [features]

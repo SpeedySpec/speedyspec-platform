@@ -3,10 +3,32 @@
 //! Every [`PostRepository`] method is one `$wpdb` call `post.php` makes, so query counts match. A failure `$wpdb`
 //! hides is `Ok` with the empty answer; `Err` is only for failures it would not hide. Rows are compared byte for
 //! byte; collation is the SQL adapter's.
+//!
+//! The statement text each method documents is WordPress 7.2-RC2's, whitespace included. In the multi-line ones each
+//! `⇥` stands for one tab, as `post.php` indents them; the lines are joined with newlines (`\n`), the first line is
+//! empty, and nothing follows the last. The SQL repository sends exactly that text, because the `query` filter sees
+//! it. Values are spliced as WordPress splices them: `%s` and `%d` by `$wpdb->prepare()`, quoted lists with
+//! `esc_sql()` on each item, id lists as plain integers.
 
 use speedyspec_php_serialize::PhpValue;
 
-use crate::{Post, PostError, PostId, PostStatusObject, PostType, PostTypeName, Slug};
+use crate::{
+    LastPostField, MimeType, Post, PostDateTime, PostError, PostId, PostStatusName,
+    PostStatusObject, PostType, PostTypeName, Slug, Timezone,
+};
+
+/// One row `get_page_by_path()` selects: `ID, post_name, post_parent, post_type`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PageRow {
+    /// `ID`.
+    pub id: PostId,
+    /// `post_name`.
+    pub name: Slug,
+    /// `post_parent`.
+    pub parent: PostId,
+    /// `post_type`.
+    pub post_type: PostTypeName,
+}
 
 /// `wp_posts` (Repository). `{posts}` is `$wpdb->posts`.
 pub trait PostRepository {
@@ -42,6 +64,132 @@ pub trait PostRepository {
         post_type: &PostTypeName,
         except: PostId,
     ) -> Result<Option<Slug>, PostError>;
+
+    /// `_prime_post_caches()` (post.php 8741): `SELECT {posts}.* FROM {posts} WHERE ID IN (%s)`, where `%s` is the
+    /// ids joined with `,` (`sprintf()`, not `prepare()`).
+    ///
+    /// The rows for the ids that exist, once each; there is no `ORDER BY`, so the order is the engine's. Empty `ids`
+    /// sends no statement (WordPress never sends `IN ()`) and answers empty.
+    fn find_many(&self, ids: &[PostId]) -> Result<Vec<Post>, PostError>;
+    /// `_prime_post_parent_id_caches()` (post.php 8794):
+    /// `SELECT {posts}.ID, {posts}.post_parent FROM {posts} WHERE ID IN (%s)`, the ids joined with `,`.
+    ///
+    /// `(ID, post_parent)` for each id that exists, in the engine's order. Empty `ids` sends no statement.
+    fn parent_ids(&self, ids: &[PostId]) -> Result<Vec<(PostId, PostId)>, PostError>;
+    /// `get_page_by_path()` (post.php 6532-6540), `$wpdb->get_results( $sql, OBJECT_K )`:
+    ///
+    /// ```text
+    ///
+    /// ⇥⇥SELECT ID, post_name, post_parent, post_type
+    /// ⇥⇥FROM {posts}
+    /// ⇥⇥WHERE post_name IN ({names})
+    /// ⇥⇥AND post_type IN ({types})
+    /// ⇥⇥ORDER BY
+    /// ⇥⇥⇥post_status = 'publish' DESC,
+    /// ⇥⇥⇥post_status IN ('draft', 'pending', 'auto-draft') ASC, ID ASC
+    /// ⇥
+    /// ```
+    ///
+    /// `{names}` is `'` + the names, each through `esc_sql()`, joined with `','` + `'`; `{types}` the same for the
+    /// post types. The caller has already `sanitize_title_for_query()`'d the names and expanded a single post type to
+    /// `[ $post_type, 'attachment' ]`.
+    ///
+    /// Rows in the statement's order: published first, then the other statuses, then `draft`, `pending` and
+    /// `auto-draft`, each by `ID`. Whether `post_name` matches ignoring case is the engine's collation: the SQL
+    /// repository on stock tables does (`utf8mb4_unicode_520_ci`, checked by `conformance::collation_suite`), the
+    /// memory repository compares bytes. Empty `names` or `post_types` sends no statement and answers empty
+    /// (WordPress always has at least one of each).
+    fn pages_by_names(
+        &self,
+        names: &[Slug],
+        post_types: &[PostTypeName],
+    ) -> Result<Vec<PageRow>, PostError>;
+    /// `get_all_page_ids()` (post.php 6435): `SELECT ID FROM {posts} WHERE post_type = 'page'`.
+    ///
+    /// Every page's id, whatever its status, in the engine's order.
+    fn all_page_ids(&self) -> Result<Vec<PostId>, PostError>;
+    /// `wp_count_posts()` (post.php 3611-3635), through `$wpdb->prepare()`. With `private` as `None` (every reader
+    /// who may read private posts, and every `$perm` but `readable`), `%s` the post type:
+    ///
+    /// ```text
+    ///
+    /// ⇥⇥⇥SELECT post_status, COUNT(*) AS num_posts
+    /// ⇥⇥⇥FROM {posts}
+    /// ⇥⇥⇥WHERE post_type = %s
+    /// ⇥⇥ GROUP BY post_status
+    /// ```
+    ///
+    /// With `private` as `Some(( user_id, statuses ))`, for a logged-in reader who cannot read private posts, the
+    /// first `%s` and the second the post type and `%d` the user id:
+    ///
+    /// ```text
+    ///
+    /// ⇥⇥⇥SELECT post_status, COUNT(*) AS num_posts
+    /// ⇥⇥⇥FROM (
+    /// ⇥⇥⇥⇥SELECT post_status
+    /// ⇥⇥⇥⇥FROM {posts}
+    /// ⇥⇥⇥⇥WHERE post_type = %s AND post_status != 'private'
+    /// ⇥⇥⇥⇥UNION ALL
+    /// ⇥⇥⇥⇥SELECT post_status
+    /// ⇥⇥⇥⇥FROM {posts}
+    /// ⇥⇥⇥⇥WHERE post_type = %s AND post_status = 'private' AND post_author = %d
+    /// ⇥⇥⇥) AS filtered_posts
+    /// ⇥⇥ GROUP BY post_status
+    /// ```
+    ///
+    /// `statuses` are the statuses that branch hides unless the reader wrote the post. WordPress 7.2-RC2 names only
+    /// `private`, so a caller matching it passes `[private]`, and the SQL repository sends the text above.
+    ///
+    /// Each status that has posts with its count; no `ORDER BY`, so the engine's order. A type with no posts answers
+    /// empty.
+    fn count_by_status(
+        &self,
+        post_type: &PostTypeName,
+        private: Option<(u64, &[PostStatusName])>,
+    ) -> Result<Vec<(PostStatusName, u64)>, PostError>;
+    /// `wp_count_attachments()` (post.php 3730 and 3736): two statements, in this order, where `$and` is
+    /// `wp_post_mime_type_where( $mime_type )`:
+    ///
+    /// - `SELECT post_mime_type, COUNT( * ) AS num_posts FROM {posts} WHERE post_type = 'attachment' AND post_status
+    ///   != 'trash' $and GROUP BY post_mime_type`
+    /// - `SELECT COUNT( * ) FROM {posts} WHERE post_type = 'attachment' AND post_status = 'trash' $and`
+    ///
+    /// With no filter `$and` is empty, so `'trash'` and `GROUP BY` have two spaces between them, and the second
+    /// statement ends in a space. `mime_type` is `$mime_type` as a string (WordPress splits it on `,`); the SQL
+    /// repository builds `$and` by `wp_post_mime_type_where()`'s rule (`image` matches `image/%`, `image/png` exactly,
+    /// a pattern that reduces to `''`, `%` or `%/%` matches everything), and the memory repository matches as that
+    /// `LIKE` would.
+    ///
+    /// The untrashed counts by mime type, in the engine's order, and the trashed count.
+    fn count_attachments(
+        &self,
+        mime_type: Option<&str>,
+    ) -> Result<(Vec<(MimeType, u64)>, u64), PostError>;
+    /// `_get_last_post_time()` (post.php 8125-8132), `{field}` being `date` or `modified` and `{types}` `'` + the
+    /// post types, each through `esc_sql()`, joined with `', '` + `'` (`''` when there are none):
+    ///
+    /// - [`Timezone::Gmt`]: `SELECT post_{field}_gmt FROM {posts} WHERE post_status = 'publish' AND post_type IN
+    ///   ({types}) ORDER BY post_{field}_gmt DESC LIMIT 1`
+    /// - [`Timezone::Blog`]: `SELECT post_{field} FROM {posts} WHERE post_status = 'publish' AND post_type IN
+    ///   ({types}) ORDER BY post_{field}_gmt DESC LIMIT 1`
+    /// - [`Timezone::Server`]: `SELECT DATE_ADD(post_{field}_gmt, INTERVAL '0' SECOND) FROM {posts} WHERE
+    ///   post_status = 'publish' AND post_type IN ({types}) ORDER BY post_{field}_gmt DESC LIMIT 1`. The `0` is
+    ///   PHP's `gmdate( 'Z' )`, which is always `0`.
+    ///
+    /// The newest published post's date, ordered by the GMT column whichever column is read. A zero date
+    /// (`0000-00-00 00:00:00`) comes back as stored: WordPress caches and returns it. `None` when no row matches or
+    /// the value is `NULL` (MySQL's `DATE_ADD` on a zero date).
+    fn last_post_time(
+        &self,
+        field: LastPostField,
+        post_types: &[PostTypeName],
+        timezone: Timezone,
+    ) -> Result<Option<PostDateTime>, PostError>;
+    /// `get_available_post_mime_types()` (post.php 8903), through `$wpdb->prepare()`, `%s` the post type:
+    /// `SELECT DISTINCT post_mime_type FROM {posts} WHERE post_type = %s AND post_mime_type != ''`.
+    ///
+    /// Each non-empty mime type once, in the engine's order.
+    fn available_mime_types(&self, post_type: &PostTypeName) -> Result<Vec<MimeType>, PostError>;
 }
 
 /// `get_post( $id )`: through whatever cache the binding keeps. Phase 2b's binding has none (`speedyspec-wp-posts`'
@@ -49,6 +197,20 @@ pub trait PostRepository {
 pub trait PostReader {
     /// The post, or `None` when there is none.
     fn post(&self, id: PostId) -> Result<Option<Post>, PostError>;
+}
+
+/// The global `$post` (Adapter): what `get_post()` falls back to when its argument is empty.
+pub trait CurrentPost {
+    /// `$GLOBALS['post']` as PHP holds it (a `WP_Post`, an id, or whatever a plugin put there); `None` when it is
+    /// not set.
+    fn current(&self) -> Option<PhpValue>;
+}
+
+/// `WP_Query` (Adapter), opaque until the query seam is ported: the post functions that query through it
+/// (`get_posts()`, `get_children()`, `get_pages()`) stay WordPress's own until then, and this names the call for them.
+pub trait PostQuery {
+    /// `( new WP_Query() )->query( $args )`: the posts it returns, as PHP holds them.
+    fn query(&self, args: PhpValue) -> Result<PhpValue, PostError>;
 }
 
 /// The time functions WordPress's dates use (a table in tests; Rust and PHP adapters in phase 5).

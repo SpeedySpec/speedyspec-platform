@@ -1,8 +1,8 @@
 //! The checks every post repository passes, so the memory and SQL repositories answer alike.
 
 use crate::{
-    CommentStatus, MimeType, PingStatus, Post, PostDate, PostDateTime, PostId, PostRepository,
-    PostStatusName, PostTypeName, Slug,
+    CommentStatus, LastPostField, MimeType, PageRow, PingStatus, Post, PostDate, PostDateTime,
+    PostId, PostRepository, PostStatusName, PostTypeName, Slug, Timezone,
 };
 
 fn ensure(check: &str, ok: bool, detail: impl FnOnce() -> String) {
@@ -29,6 +29,9 @@ fn named(name: &str, kind: &str, parent: u64) -> Post {
 
 /// Runs every check against `repo`, which must start with an empty table and a fresh auto-increment
 /// (`insert_with_id_is_honoured` expects 101 after an explicit 100). Panics naming the failing check.
+///
+/// The read statements' checks run last, on post types of their own (`rd-*`); the ones that read every page or
+/// every attachment compare what the table held before and after their inserts.
 pub fn post_repository_suite(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
         repo.insert(post)
@@ -236,6 +239,8 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
             && empty_hier == Some(slug("")),
         || format!("{zero_name:?} {empty_name:?} {zero_any:?} {empty_hier:?}"),
     );
+
+    read_statements(repo);
 }
 
 /// Checks for repositories whose columns are binary-safe (memory, latin1 or binary tables); `post_repository_suite`
@@ -263,5 +268,442 @@ pub fn binary_safe_suite(repo: &dyn PostRepository) {
         "content_and_name_keep_invalid_utf8",
         read == Some(Post { id, ..post }) && owner == Some(raw_name.clone()),
         || format!("{read:?} {owner:?}"),
+    );
+}
+
+/// A post of `kind` named `name` with `status`.
+fn with_status(name: &str, kind: &str, status: &str) -> Post {
+    Post {
+        status: PostStatusName::new(status),
+        ..named(name, kind, 0)
+    }
+}
+
+/// Sorted, for statements with no `ORDER BY`: their order is the engine's.
+fn sorted<T: Ord>(mut rows: Vec<T>) -> Vec<T> {
+    rows.sort();
+    rows
+}
+
+/// What `count_by_status` answers, by status name, sorted.
+fn counts(rows: Vec<(PostStatusName, u64)>) -> Vec<(String, u64)> {
+    sorted(
+        rows.into_iter()
+            .map(|(status, n)| (status.as_str().to_string(), n))
+            .collect(),
+    )
+}
+
+/// What `count_attachments` answers: the mime counts by type, sorted, and the trash count.
+fn attachment_counts(
+    repo: &dyn PostRepository,
+    mime_type: Option<&str>,
+) -> (Vec<(Vec<u8>, u64)>, u64) {
+    let (rows, trash) = repo
+        .count_attachments(mime_type)
+        .expect("count_attachments");
+    let rows = rows
+        .into_iter()
+        .map(|(mime, n)| (mime.as_bytes().to_vec(), n))
+        .collect();
+    (sorted(rows), trash)
+}
+
+/// `after` less `before`, by mime type, leaving out the types whose count did not change.
+fn grown(before: &[(Vec<u8>, u64)], after: &[(Vec<u8>, u64)]) -> Vec<(String, u64)> {
+    after
+        .iter()
+        .filter_map(|(mime, n)| {
+            let was = before
+                .iter()
+                .find(|(m, _)| m == mime)
+                .map_or(0, |(_, n)| *n);
+            (*n != was).then(|| (String::from_utf8_lossy(mime).into_owned(), n - was))
+        })
+        .collect()
+}
+
+fn read_statements(repo: &dyn PostRepository) {
+    let insert = |post: &Post| {
+        repo.insert(post)
+            .expect("insert")
+            .expect("the insert returns an id")
+    };
+    let types = |names: &[&str]| names.iter().map(|n| post_type(n)).collect::<Vec<_>>();
+
+    // find_many_reads_every_found_id: rows for the ids that exist, once each, in the engine's order.
+    let zero_dated = insert(&Post {
+        date: PostDate {
+            local: PostDateTime::ZERO,
+            gmt: PostDateTime::ZERO,
+        },
+        modified: PostDate {
+            local: PostDateTime::ZERO,
+            gmt: PostDateTime::ZERO,
+        },
+        ..named("zero-dated", "rd-many", 0)
+    });
+    let child = insert(&named("child", "rd-many", zero_dated.0));
+    let mut many = repo
+        .find_many(&[child, PostId(9_998), zero_dated, child])
+        .expect("find_many");
+    many.sort_by_key(|p| p.id);
+    let expected = vec![
+        Post {
+            id: zero_dated,
+            ..named("zero-dated", "rd-many", 0)
+        },
+        Post {
+            id: child,
+            ..named("child", "rd-many", zero_dated.0)
+        },
+    ];
+    ensure(
+        "find_many_reads_every_found_id",
+        many == expected && many[0].date.local.is_zero() && many[0].modified.gmt.is_zero(),
+        || format!("{many:?}"),
+    );
+
+    // find_many_and_parent_ids_of_nothing_are_empty
+    let none = repo.find_many(&[]).expect("find_many");
+    let no_parents = repo.parent_ids(&[]).expect("parent_ids");
+    let missing = repo.parent_ids(&[PostId(9_998)]).expect("parent_ids");
+    ensure(
+        "find_many_and_parent_ids_of_nothing_are_empty",
+        none.is_empty() && no_parents.is_empty() && missing.is_empty(),
+        || format!("{none:?} {no_parents:?} {missing:?}"),
+    );
+
+    // parent_ids_pairs_each_id_with_its_parent
+    let parents = sorted(
+        repo.parent_ids(&[child, zero_dated, PostId(9_998), child])
+            .expect("parent_ids"),
+    );
+    ensure(
+        "parent_ids_pairs_each_id_with_its_parent",
+        parents == vec![(zero_dated, PostId(0)), (child, zero_dated)],
+        || format!("{parents:?}"),
+    );
+
+    // pages_by_names_orders_published_first_then_drafts_last
+    let draft = insert(&with_status("about", "rd-page", "draft"));
+    let private = insert(&with_status("about", "rd-page", "private"));
+    let published = insert(&with_status("about", "rd-page", "publish"));
+    let pending = insert(&with_status("about", "rd-page", "pending"));
+    let republished = insert(&with_status("about", "rd-page", "publish"));
+    let team = insert(&Post {
+        parent: published,
+        ..with_status("team", "rd-page", "publish")
+    });
+    let auto_draft = insert(&with_status("team", "rd-page", "auto-draft"));
+    let photo = insert(&with_status("about", "rd-attach", "inherit"));
+    insert(&with_status("about", "rd-other", "publish"));
+    let pages = repo
+        .pages_by_names(&[slug("about"), slug("team")], &types(&["rd-page"]))
+        .expect("pages_by_names");
+    let order: Vec<PostId> = pages.iter().map(|p| p.id).collect();
+    let expected = vec![
+        published,
+        republished,
+        team,
+        private,
+        draft,
+        pending,
+        auto_draft,
+    ];
+    let team_row = pages.iter().find(|p| p.id == team);
+    ensure(
+        "pages_by_names_orders_published_first_then_drafts_last",
+        order == expected
+            && team_row
+                == Some(&PageRow {
+                    id: team,
+                    name: slug("team"),
+                    parent: published,
+                    post_type: post_type("rd-page"),
+                }),
+        || format!("{pages:?}"),
+    );
+
+    // pages_by_names_matches_any_listed_type
+    let both = repo
+        .pages_by_names(&[slug("about")], &types(&["rd-page", "rd-attach"]))
+        .expect("pages_by_names");
+    let both: Vec<PostId> = both.iter().map(|p| p.id).collect();
+    ensure(
+        "pages_by_names_matches_any_listed_type",
+        both == vec![published, republished, private, photo, draft, pending],
+        || format!("{both:?}"),
+    );
+
+    // pages_by_names_of_nothing_is_empty
+    let no_names = repo
+        .pages_by_names(&[], &types(&["rd-page"]))
+        .expect("pages_by_names");
+    let no_types = repo
+        .pages_by_names(&[slug("about")], &[])
+        .expect("pages_by_names");
+    let unknown = repo
+        .pages_by_names(&[slug("nowhere")], &types(&["rd-page"]))
+        .expect("pages_by_names");
+    ensure(
+        "pages_by_names_of_nothing_is_empty",
+        no_names.is_empty() && no_types.is_empty() && unknown.is_empty(),
+        || format!("{no_names:?} {no_types:?} {unknown:?}"),
+    );
+
+    // all_page_ids_lists_every_page: whatever the status, and nothing of another type.
+    let before = sorted(repo.all_page_ids().expect("all_page_ids"));
+    let page_a = insert(&with_status("rd-a", "page", "draft"));
+    let page_b = insert(&with_status("rd-b", "page", "publish"));
+    insert(&with_status("rd-c", "rd-page", "publish"));
+    let after = sorted(repo.all_page_ids().expect("all_page_ids"));
+    let mut expected = before.clone();
+    expected.extend([page_a, page_b]);
+    let expected = sorted(expected);
+    ensure("all_page_ids_lists_every_page", after == expected, || {
+        format!("{before:?} {after:?}")
+    });
+
+    // count_by_status_groups_by_status
+    for (status, author) in [
+        ("publish", 7),
+        ("publish", 8),
+        ("draft", 7),
+        ("private", 7),
+        ("private", 8),
+        ("private", 8),
+    ] {
+        insert(&Post {
+            author,
+            ..with_status("counted", "rd-count", status)
+        });
+    }
+    let private = [PostStatusName::new("private")];
+    let all = counts(
+        repo.count_by_status(&post_type("rd-count"), None)
+            .expect("count_by_status"),
+    );
+    let own = counts(
+        repo.count_by_status(&post_type("rd-count"), Some((7, &private)))
+            .expect("count_by_status"),
+    );
+    let none_own = counts(
+        repo.count_by_status(&post_type("rd-count"), Some((9, &private)))
+            .expect("count_by_status"),
+    );
+    let empty_type = repo
+        .count_by_status(&post_type("rd-none"), None)
+        .expect("count_by_status");
+    let entry = |s: &str, n: u64| (s.to_string(), n);
+    ensure(
+        "count_by_status_groups_by_status",
+        all == vec![entry("draft", 1), entry("private", 3), entry("publish", 2)]
+            && own == vec![entry("draft", 1), entry("private", 1), entry("publish", 2)]
+            && none_own == vec![entry("draft", 1), entry("publish", 2)]
+            && empty_type.is_empty(),
+        || format!("{all:?} {own:?} {none_own:?} {empty_type:?}"),
+    );
+
+    // count_attachments_counts_by_mime_type_and_trash: `mime_type` filters both statements.
+    let filters = [
+        None,
+        Some("image"),
+        Some("image/png"),
+        Some("image/png, text"),
+    ];
+    let before: Vec<_> = filters
+        .iter()
+        .map(|f| attachment_counts(repo, *f))
+        .collect();
+    for (mime, status) in [
+        ("image/png", "inherit"),
+        ("image/png", "publish"),
+        ("image/jpeg", "inherit"),
+        ("text/plain", "trash"),
+        ("image/png", "trash"),
+    ] {
+        insert(&Post {
+            mime_type: MimeType::from(mime),
+            ..with_status("upload", "attachment", status)
+        });
+    }
+    let after: Vec<_> = filters
+        .iter()
+        .map(|f| attachment_counts(repo, *f))
+        .collect();
+    let delta: Vec<(Vec<(String, u64)>, u64)> = before
+        .iter()
+        .zip(&after)
+        .map(|((b, bt), (a, at))| (grown(b, a), at - bt))
+        .collect();
+    let mime = |m: &str, n: u64| (m.to_string(), n);
+    let expected = vec![
+        (vec![mime("image/jpeg", 1), mime("image/png", 2)], 2),
+        (vec![mime("image/jpeg", 1), mime("image/png", 2)], 1),
+        (vec![mime("image/png", 2)], 1),
+        (vec![mime("image/png", 2)], 2),
+    ];
+    ensure(
+        "count_attachments_counts_by_mime_type_and_trash",
+        delta == expected,
+        || format!("{delta:?}"),
+    );
+
+    // available_mime_types_lists_each_non_empty_type_once
+    for mime in ["audio/ogg", "audio/ogg", "video/mp4", ""] {
+        insert(&Post {
+            mime_type: MimeType::from(mime),
+            ..named("media", "rd-media", 0)
+        });
+    }
+    insert(&Post {
+        mime_type: MimeType::from("image/gif"),
+        ..named("media", "rd-other-media", 0)
+    });
+    let available = sorted(
+        repo.available_mime_types(&post_type("rd-media"))
+            .expect("available_mime_types"),
+    );
+    let unknown = repo
+        .available_mime_types(&post_type("rd-none"))
+        .expect("available_mime_types");
+    ensure(
+        "available_mime_types_lists_each_non_empty_type_once",
+        available == vec![MimeType::from("audio/ogg"), MimeType::from("video/mp4")]
+            && unknown.is_empty(),
+        || format!("{available:?} {unknown:?}"),
+    );
+
+    last_post_time(repo);
+}
+
+fn last_post_time(repo: &dyn PostRepository) {
+    let insert = |post: &Post| {
+        repo.insert(post)
+            .expect("insert")
+            .expect("the insert returns an id")
+    };
+    let dated = |kind: &str, status: &str, local: &str, gmt: &str| Post {
+        date: PostDate {
+            local: PostDateTime::new(local),
+            gmt: PostDateTime::new(gmt),
+        },
+        modified: PostDate {
+            local: PostDateTime::new(local),
+            gmt: PostDateTime::new(gmt),
+        },
+        ..with_status("dated", kind, status)
+    };
+    let last = |field: LastPostField, kinds: &[&str], timezone: Timezone| {
+        let kinds: Vec<_> = kinds.iter().map(|k| post_type(k)).collect();
+        repo.last_post_time(field, &kinds, timezone)
+            .expect("last_post_time")
+            .map(|d| d.as_str().to_string())
+    };
+    let at = |s: &str| Some(s.to_string());
+
+    // last_post_time_orders_by_the_gmt_column: the newest published post by GMT, whichever column is read.
+    insert(&dated(
+        "rd-last",
+        "publish",
+        "2024-03-01 09:00:00",
+        "2024-03-01 15:00:00",
+    ));
+    insert(&dated(
+        "rd-last",
+        "publish",
+        "2024-03-02 01:00:00",
+        "2024-03-01 20:00:00",
+    ));
+    insert(&dated(
+        "rd-last",
+        "draft",
+        "2025-01-01 00:00:00",
+        "2025-01-01 00:00:00",
+    ));
+    insert(&dated(
+        "rd-last-b",
+        "publish",
+        "2024-02-01 00:00:00",
+        "2024-02-01 00:00:00",
+    ));
+    let blog = last(LastPostField::Date, &["rd-last"], Timezone::Blog);
+    let gmt = last(LastPostField::Modified, &["rd-last"], Timezone::Gmt);
+    let server = last(LastPostField::Date, &["rd-last"], Timezone::Server);
+    let either = last(
+        LastPostField::Date,
+        &["rd-last-b", "rd-last"],
+        Timezone::Gmt,
+    );
+    ensure(
+        "last_post_time_orders_by_the_gmt_column",
+        blog == at("2024-03-02 01:00:00")
+            && gmt == at("2024-03-01 20:00:00")
+            && server == at("2024-03-01 20:00:00")
+            && either == at("2024-03-01 20:00:00"),
+        || format!("{blog:?} {gmt:?} {server:?} {either:?}"),
+    );
+
+    // last_post_time_reads_zero_dates_back: a zero local date is a date, not "none".
+    insert(&dated(
+        "rd-last-zero",
+        "publish",
+        PostDateTime::ZERO.as_str(),
+        "2024-01-01 00:00:00",
+    ));
+    let zero_local = last(LastPostField::Date, &["rd-last-zero"], Timezone::Blog);
+    insert(&dated(
+        "rd-last-zero-gmt",
+        "publish",
+        "2024-01-01 00:00:00",
+        PostDateTime::ZERO.as_str(),
+    ));
+    let zero_gmt = last(
+        LastPostField::Modified,
+        &["rd-last-zero-gmt"],
+        Timezone::Gmt,
+    );
+    ensure(
+        "last_post_time_reads_zero_dates_back",
+        zero_local == at(PostDateTime::ZERO.as_str())
+            && zero_gmt == at(PostDateTime::ZERO.as_str()),
+        || format!("{zero_local:?} {zero_gmt:?}"),
+    );
+
+    // last_post_time_of_nothing_is_none: no published post, an unknown type, or no type at all.
+    insert(&dated(
+        "rd-last-draft",
+        "draft",
+        "2024-01-01 00:00:00",
+        "2024-01-01 00:00:00",
+    ));
+    let drafts = last(LastPostField::Date, &["rd-last-draft"], Timezone::Blog);
+    let unknown = last(LastPostField::Date, &["rd-none"], Timezone::Gmt);
+    let no_types = last(LastPostField::Modified, &[], Timezone::Blog);
+    ensure(
+        "last_post_time_of_nothing_is_none",
+        drafts.is_none() && unknown.is_none() && no_types.is_none(),
+        || format!("{drafts:?} {unknown:?} {no_types:?}"),
+    );
+}
+
+/// Checks for repositories that compare `post_name` as MySQL's `utf8mb4_unicode_520_ci` collation does (the SQL
+/// repository on stock tables); `post_repository_suite` leaves them out, because the memory repository compares
+/// bytes. `get_page_by_path( 'About' )` finds `about` this way. Like `post_repository_suite`, it needs an empty table.
+pub fn collation_suite(repo: &dyn PostRepository) {
+    // pages_by_names_ignores_case
+    let about = repo
+        .insert(&named("about", "page", 0))
+        .expect("insert")
+        .expect("the insert returns an id");
+    let pages = repo
+        .pages_by_names(&[slug("About")], &[post_type("page")])
+        .expect("pages_by_names");
+    let found: Vec<(PostId, Slug)> = pages.into_iter().map(|p| (p.id, p.name)).collect();
+    ensure(
+        "pages_by_names_ignores_case",
+        found == vec![(about, slug("about"))],
+        || format!("{found:?}"),
     );
 }
