@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.2](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-compat-v0.10.1...speedyspec-compat-v0.10.2) (2026-11-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * speedyspec-php bumped from 0.8.0 to 0.8.1
+
 ## [0.10.1](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-compat-v0.10.0...speedyspec-compat-v0.10.1) (2026-11-26)
 
 
