@@ -200,7 +200,8 @@ pub trait Posts {
     /// `get_post_ancestors()`: the parent first, then its parent, stopping at a loop.
     fn ancestors(&self, id: PostRef) -> Result<Vec<PostId>, PostError>;
 
-    /// `wp_get_post_parent_id()`: `None` where WordPress returns `false` (no post, or no parent).
+    /// `wp_get_post_parent_id()`: `None` where WordPress returns `false` (no post); `Some(PostId(0))` for a post
+    /// with no parent, since WordPress returns `0` there.
     fn parent_id(&self, id: PostRef) -> Result<Option<PostId>, PostError>;
 
     /// `get_page_by_path( $page_path, OBJECT, $post_type )`: the raw post, `None` where WordPress returns `null`.
