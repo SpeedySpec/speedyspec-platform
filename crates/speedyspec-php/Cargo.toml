@@ -57,3 +57,7 @@ harness = false
 [[test]]
 name = "global_array"
 harness = false
+
+[[test]]
+name = "zval_copy"
+harness = false

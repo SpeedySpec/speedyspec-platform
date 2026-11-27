@@ -701,7 +701,9 @@ pub fn set_global(name: &str, value: &Value) -> Result<(), PhpError> {
                 target = &raw mut (*(*target).value.ref_).val;
             }
             let old: Zval = ptr::read(target);
-            ptr::copy_nonoverlapping(fresh_ptr, target, 1);
+            // ZVAL_COPY_VALUE: the bucket keeps its `u2` (its hash chain).
+            (*target).value = (*fresh_ptr).value;
+            (*target).u1 = (*fresh_ptr).u1;
             Some(old)
         }
     });
