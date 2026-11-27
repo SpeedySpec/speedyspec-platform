@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-php-ext-v0.2.0...speedyspec-php-ext-v0.2.1) (2026-11-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * speedyspec-php bumped from 0.8.0 to 0.8.1
+
 ## [0.2.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-php-ext-v0.1.6...speedyspec-php-ext-v0.2.0) (2026-11-26)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-posts-contracts-v0.3.0...speedyspec-wp-posts-contracts-v0.3.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* **posts-contracts:** server time carries DATE_ADD's microseconds ([#18](https://github.com/SpeedySpec/speedyspec-platform/issues/18)) ([24a5895](https://github.com/SpeedySpec/speedyspec-platform/commit/24a589549111027f6a5d61347bf49d693e259989))
+
 ## [0.3.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-posts-contracts-v0.2.0...speedyspec-wp-posts-contracts-v0.3.0) (2026-11-27)
 
 

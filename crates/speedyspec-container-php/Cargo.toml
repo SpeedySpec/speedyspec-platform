@@ -1,6 +1,6 @@
 [package]
 name = "speedyspec-container-php"
-version = "0.2.0"
+version = "0.2.1"
 description = "The service container from PHP: SpeedySpec\\Container\\Container, PHP bindings as request-long overrides of Rust ports, and PHP autowiring."
 edition.workspace = true
 rust-version.workspace = true
@@ -29,8 +29,8 @@ embed = ["speedyspec-php/embed", "speedyspec-php-ext/embed"]
 
 [dependencies]
 speedyspec-container = { path = "../speedyspec-container", version = "0.2.0" }
-speedyspec-php = { path = "../speedyspec-php", version = "0.8.0", default-features = false }
-speedyspec-php-ext = { path = "../speedyspec-php-ext", version = "0.2.0", default-features = false }
+speedyspec-php = { path = "../speedyspec-php", version = "0.8.1", default-features = false }
+speedyspec-php-ext = { path = "../speedyspec-php-ext", version = "0.2.1", default-features = false }
 thiserror = "2"
 
 [dev-dependencies]
