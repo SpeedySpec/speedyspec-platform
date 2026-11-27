@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-posts-contracts-v0.2.0...speedyspec-wp-posts-contracts-v0.3.0) (2026-11-27)
+
+
+### Features
+
+* **posts-contracts:** the read surface and its statements ([#16](https://github.com/SpeedySpec/speedyspec-platform/issues/16)) ([c2b1236](https://github.com/SpeedySpec/speedyspec-platform/commit/c2b1236edcd42db65c1d62ce746e49065edc914c))
+
 ## [0.2.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-posts-contracts-v0.1.0...speedyspec-wp-posts-contracts-v0.2.0) (2026-11-26)
 
 

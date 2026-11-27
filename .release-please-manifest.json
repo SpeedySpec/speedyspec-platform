@@ -37,7 +37,7 @@
   "crates/speedyspec-wp-meta-contracts": "0.3.0",
   "crates/speedyspec-wp-object-cache-contracts": "0.2.0",
   "crates/speedyspec-wp-password-contracts": "0.4.0",
-  "crates/speedyspec-wp-posts-contracts": "0.2.0",
+  "crates/speedyspec-wp-posts-contracts": "0.3.0",
   "crates/speedyspec-wp-shortcode-contracts": "0.6.0",
   "crates/speedyspec-wp-text-contracts": "0.6.0",
   "crates/speedyspec-wp-text-diff": "0.3.0",
