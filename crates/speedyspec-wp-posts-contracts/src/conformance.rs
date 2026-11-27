@@ -1,8 +1,8 @@
 //! The checks every post repository passes, so the memory and SQL repositories answer alike.
 
 use crate::{
-    CommentStatus, LastPostField, MimeType, PageRow, PingStatus, Post, PostDate, PostDateTime,
-    PostId, PostRepository, PostStatusName, PostTypeName, Slug, Timezone,
+    CommentStatus, LastPostField, MimeFilter, MimeType, PageRow, PingStatus, Post, PostDate,
+    PostDateTime, PostId, PostRepository, PostStatusName, PostTypeName, Slug, Timezone,
 };
 
 fn ensure(check: &str, ok: bool, detail: impl FnOnce() -> String) {
@@ -297,7 +297,7 @@ fn counts(rows: Vec<(PostStatusName, u64)>) -> Vec<(String, u64)> {
 /// What `count_attachments` answers: the mime counts by type, sorted, and the trash count.
 fn attachment_counts(
     repo: &dyn PostRepository,
-    mime_type: Option<&str>,
+    mime_type: Option<&MimeFilter>,
 ) -> (Vec<(Vec<u8>, u64)>, u64) {
     let (rows, trash) = repo
         .count_attachments(mime_type)
@@ -479,17 +479,16 @@ fn read_statements(repo: &dyn PostRepository) {
             ..with_status("counted", "rd-count", status)
         });
     }
-    let private = [PostStatusName::new("private")];
     let all = counts(
         repo.count_by_status(&post_type("rd-count"), None)
             .expect("count_by_status"),
     );
     let own = counts(
-        repo.count_by_status(&post_type("rd-count"), Some((7, &private)))
+        repo.count_by_status(&post_type("rd-count"), Some(7))
             .expect("count_by_status"),
     );
     let none_own = counts(
-        repo.count_by_status(&post_type("rd-count"), Some((9, &private)))
+        repo.count_by_status(&post_type("rd-count"), Some(9))
             .expect("count_by_status"),
     );
     let empty_type = repo
@@ -505,16 +504,33 @@ fn read_statements(repo: &dyn PostRepository) {
         || format!("{all:?} {own:?} {none_own:?} {empty_type:?}"),
     );
 
-    // count_attachments_counts_by_mime_type_and_trash: `mime_type` filters both statements.
+    // count_attachments_counts_by_mime_type_and_trash: `mime_type` filters both statements, by
+    // `wp_post_mime_type_where()`'s rule.
+    let one = |s: &str| Some(MimeFilter::One(s.to_string()));
+    let many = |items: &[&str]| {
+        Some(MimeFilter::Many(
+            items.iter().map(|i| i.to_string()).collect(),
+        ))
+    };
     let filters = [
         None,
-        Some("image"),
-        Some("image/png"),
-        Some("image/png, text"),
+        one("image"),
+        one("image/png"),
+        one("image/png, text"),
+        // A string drops its empty items; an empty string has none left, so everything matches.
+        one(",image/png,,"),
+        one(""),
+        // An array keeps its items: an empty one matches everything, even after a clause.
+        many(&["image/png", ""]),
+        many(&["image/png", "%/%"]),
+        // `*` is not a wildcard item: it becomes `LIKE '%'`, which also matches everything.
+        one("*"),
+        // An array item holding a comma is one pattern: `= 'image/pngtext'`.
+        many(&["image/png, text"]),
     ];
     let before: Vec<_> = filters
         .iter()
-        .map(|f| attachment_counts(repo, *f))
+        .map(|f| attachment_counts(repo, f.as_ref()))
         .collect();
     for (mime, status) in [
         ("image/png", "inherit"),
@@ -530,7 +546,7 @@ fn read_statements(repo: &dyn PostRepository) {
     }
     let after: Vec<_> = filters
         .iter()
-        .map(|f| attachment_counts(repo, *f))
+        .map(|f| attachment_counts(repo, f.as_ref()))
         .collect();
     let delta: Vec<(Vec<(String, u64)>, u64)> = before
         .iter()
@@ -538,11 +554,18 @@ fn read_statements(repo: &dyn PostRepository) {
         .map(|((b, bt), (a, at))| (grown(b, a), at - bt))
         .collect();
     let mime = |m: &str, n: u64| (m.to_string(), n);
+    let every = || (vec![mime("image/jpeg", 1), mime("image/png", 2)], 2);
     let expected = vec![
-        (vec![mime("image/jpeg", 1), mime("image/png", 2)], 2),
+        every(),
         (vec![mime("image/jpeg", 1), mime("image/png", 2)], 1),
         (vec![mime("image/png", 2)], 1),
         (vec![mime("image/png", 2)], 2),
+        (vec![mime("image/png", 2)], 1),
+        every(),
+        every(),
+        every(),
+        every(),
+        (vec![], 0),
     ];
     ensure(
         "count_attachments_counts_by_mime_type_and_trash",
@@ -688,15 +711,22 @@ fn last_post_time(repo: &dyn PostRepository) {
     );
 }
 
-/// Checks for repositories that compare `post_name` as MySQL's `utf8mb4_unicode_520_ci` collation does (the SQL
-/// repository on stock tables); `post_repository_suite` leaves them out, because the memory repository compares
-/// bytes. `get_page_by_path( 'About' )` finds `about` this way. Like `post_repository_suite`, it needs an empty table.
-pub fn collation_suite(repo: &dyn PostRepository) {
+/// Checks for repositories that behave as MySQL does on stock tables (the SQL repository); `post_repository_suite`
+/// leaves them out, because the memory repository compares bytes and does no date arithmetic. Like
+/// `post_repository_suite`, it needs an empty table.
+///
+/// - `post_name` compares as the `utf8mb4_unicode_520_ci` collation does: `get_page_by_path( 'About' )` finds `about`.
+/// - `DATE_ADD` on a zero date is `NULL`, so `last_post_time` for [`Timezone::Server`] answers `None` when the newest
+///   post's GMT date is zero.
+pub fn mysql_suite(repo: &dyn PostRepository) {
+    let insert = |post: &Post| {
+        repo.insert(post)
+            .expect("insert")
+            .expect("the insert returns an id")
+    };
+
     // pages_by_names_ignores_case
-    let about = repo
-        .insert(&named("about", "page", 0))
-        .expect("insert")
-        .expect("the insert returns an id");
+    let about = insert(&named("about", "page", 0));
     let pages = repo
         .pages_by_names(&[slug("About")], &[post_type("page")])
         .expect("pages_by_names");
@@ -705,5 +735,26 @@ pub fn collation_suite(repo: &dyn PostRepository) {
         "pages_by_names_ignores_case",
         found == vec![(about, slug("about"))],
         || format!("{found:?}"),
+    );
+
+    // server_time_of_a_zero_gmt_date_is_none
+    insert(&Post {
+        date: PostDate {
+            local: PostDateTime::new("2024-01-01 00:00:00"),
+            gmt: PostDateTime::ZERO,
+        },
+        ..with_status("zero-gmt", "rd-server", "publish")
+    });
+    let server = repo
+        .last_post_time(
+            LastPostField::Date,
+            &[post_type("rd-server")],
+            Timezone::Server,
+        )
+        .expect("last_post_time");
+    ensure(
+        "server_time_of_a_zero_gmt_date_is_none",
+        server.is_none(),
+        || format!("{server:?}"),
     );
 }

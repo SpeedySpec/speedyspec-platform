@@ -14,12 +14,14 @@ Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platf
 - `Post`: the post entity, a plain object.
 - Values: `PostId`, `PostTypeName`, `PostStatusName`, `Slug`, `PostDateTime` and the post type and status objects.
 - `Posts`: reading posts, one method per `post.php` function (`get_post()`, the field readers, pages and
-  hierarchy, counts, the last post dates and the `posts` cache functions), with `PostRef`, `Filter`, `Timezone` and
-  `LastPostField`.
+  hierarchy, counts, the last post dates and the `posts` cache functions), with `PostRef`, `Filter`, `Timezone`,
+  `LastPostField`, and `MimeFilter` and `PostTypeArg`, which keep WordPress's string-or-array arguments apart.
 - `PostRepository`: one method per `wp_posts` statement `post.php` sends, each documented with WordPress 7.2-RC2's
   text, and `PageRow`.
 - `CurrentPost` (the global `$post`) and `PostQuery` (`WP_Query`, opaque until the query seam is ported).
 - `PostError`, which carries a hook's failure or a cache error whole, `PostTypeError`, and a `conformance` suite.
+  `PostError` is not `Send` or `Sync`: a hook error's payload (a PHP exception) is held in an `Rc`, as in the
+  metadata contracts' errors.
 
 ## Install
 

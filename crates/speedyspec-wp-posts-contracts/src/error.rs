@@ -48,6 +48,9 @@ impl std::error::Error for PostTypeError {}
 
 /// A post read or write that failed where `$wpdb` would not hide it, or a hook or the object cache failed under a
 /// use case. A PHP callback's exception travels whole in [`PostError::Hook`], so the binding rethrows it unchanged.
+///
+/// It is not `Send` or `Sync`: [`HookError`]'s payload is an `Rc`, as it is in the metadata contracts' errors, because
+/// a PHP request runs on one thread.
 #[derive(Debug, Clone)]
 pub enum PostError {
     /// The database reported a failure.

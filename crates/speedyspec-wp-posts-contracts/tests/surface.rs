@@ -7,8 +7,9 @@ use speedyspec_php_serialize::PhpValue;
 use speedyspec_wp_hooks_contracts::HookError;
 use speedyspec_wp_object_cache_contracts::ObjectCacheError;
 use speedyspec_wp_posts_contracts::{
-    CurrentPost, Filter, LastPostField, MimeType, PageRow, Post, PostDateTime, PostError, PostId,
-    PostQuery, PostRef, PostRepository, PostStatusName, PostTypeName, Posts, Slug, Timezone,
+    CurrentPost, Filter, LastPostField, MimeFilter, MimeType, PageRow, Post, PostDateTime,
+    PostError, PostId, PostQuery, PostRef, PostRepository, PostStatusName, PostTypeArg,
+    PostTypeName, Posts, Slug, Timezone,
 };
 
 struct Dummy;
@@ -26,8 +27,8 @@ impl Posts for Dummy {
     fn field(&self, _: &str, _: PostRef, _: Filter) -> Result<PhpValue, PostError> {
         Ok(PhpValue::Str(Vec::new()))
     }
-    fn status(&self, _: PostRef) -> Result<Option<String>, PostError> {
-        Ok(Some("publish".to_string()))
+    fn status(&self, _: PostRef) -> Result<Option<PostStatusName>, PostError> {
+        Ok(Some(PostStatusName::new("publish")))
     }
     fn post_type(&self, _: PostRef) -> Result<Option<PostTypeName>, PostError> {
         Ok(None)
@@ -41,34 +42,35 @@ impl Posts for Dummy {
     fn parent_id(&self, _: PostRef) -> Result<Option<PostId>, PostError> {
         Ok(Some(PostId(2)))
     }
-    fn page_by_path(&self, _: &str, _: &[PostTypeName]) -> Result<Option<Post>, PostError> {
-        Ok(None)
+    fn page_by_path(&self, _: &str, post_type: &PostTypeArg) -> Result<Option<Post>, PostError> {
+        Ok(Some(Post {
+            post_type: post_type.types()[0].clone(),
+            ..Post::default()
+        }))
     }
-    fn page_uri(&self, _: PostRef) -> Result<Option<String>, PostError> {
-        Ok(Some("parent/child".to_string()))
+    fn page_uri(&self, _: PostRef) -> Result<Option<Vec<u8>>, PostError> {
+        Ok(Some(b"parent/child".to_vec()))
     }
     fn all_page_ids(&self) -> Result<Vec<PostId>, PostError> {
         Ok(Vec::new())
     }
-    fn count_posts(&self, _: &PostTypeName, _: &str) -> Result<Vec<(String, u64)>, PostError> {
-        Ok(vec![("publish".to_string(), 1)])
+    fn count_posts(&self, _: &PostTypeName, _: &str) -> Result<PhpValue, PostError> {
+        Ok(PhpValue::Object {
+            class: "stdClass".to_string(),
+            properties: Vec::new(),
+        })
     }
-    fn count_attachments(&self, _: Option<&str>) -> Result<Vec<(String, u64)>, PostError> {
-        Ok(vec![("trash".to_string(), 0)])
+    fn count_attachments(&self, mime_type: Option<&MimeFilter>) -> Result<PhpValue, PostError> {
+        Ok(PhpValue::Bool(mime_type.is_some()))
     }
-    fn last_post_date(
-        &self,
-        _: Timezone,
-        _: &PostTypeName,
-    ) -> Result<Option<PostDateTime>, PostError> {
-        Ok(Some(PostDateTime::ZERO))
+    fn last_post_date(&self, timezone: &str, _: &PostTypeName) -> Result<PhpValue, PostError> {
+        Ok(match Timezone::parse(timezone) {
+            Some(_) => PhpValue::Str(PostDateTime::ZERO.as_str().as_bytes().to_vec()),
+            None => PhpValue::Bool(false),
+        })
     }
-    fn last_post_modified(
-        &self,
-        _: Timezone,
-        _: &PostTypeName,
-    ) -> Result<Option<PostDateTime>, PostError> {
-        Ok(None)
+    fn last_post_modified(&self, _: &str, _: &PostTypeName) -> Result<PhpValue, PostError> {
+        Ok(PhpValue::Bool(false))
     }
     fn available_mime_types(&self, _: &PostTypeName) -> Result<Vec<MimeType>, PostError> {
         Ok(Vec::new())
@@ -137,11 +139,14 @@ impl PostRepository for Dummy {
     fn count_by_status(
         &self,
         _: &PostTypeName,
-        _: Option<(u64, &[PostStatusName])>,
+        _: Option<u64>,
     ) -> Result<Vec<(PostStatusName, u64)>, PostError> {
         Ok(Vec::new())
     }
-    fn count_attachments(&self, _: Option<&str>) -> Result<(Vec<(MimeType, u64)>, u64), PostError> {
+    fn count_attachments(
+        &self,
+        _: Option<&MimeFilter>,
+    ) -> Result<(Vec<(MimeType, u64)>, u64), PostError> {
         Ok((Vec::new(), 0))
     }
     fn last_post_time(
@@ -195,6 +200,48 @@ fn the_traits_are_object_safe_and_callable() {
     assert_eq!(repo.pages_by_names(&[], &[]).unwrap()[0].id, PostId(3));
     assert_eq!(current.current(), Some(PhpValue::Int(5)));
     assert!(query.query(PhpValue::Null).is_ok());
+    assert_eq!(
+        posts
+            .last_post_date("UTC", &PostTypeName::new("any"))
+            .unwrap(),
+        PhpValue::Bool(false)
+    );
+    let filter = MimeFilter::Many(vec!["image".to_string()]);
+    assert_eq!(
+        posts.count_attachments(Some(&filter)).unwrap(),
+        PhpValue::Bool(true)
+    );
+    assert_eq!(
+        repo.count_by_status(&PostTypeName::new("post"), Some(7))
+            .unwrap(),
+        vec![]
+    );
+}
+
+#[test]
+fn a_single_post_type_also_searches_attachments() {
+    let page = PostTypeName::new("page");
+    assert_eq!(
+        PostTypeArg::One(page.clone()).types(),
+        vec![page.clone(), PostTypeName::new("attachment")]
+    );
+    assert_eq!(
+        PostTypeArg::Many(vec![page.clone()]).types(),
+        vec![page.clone()]
+    );
+    assert_eq!(
+        PostTypeArg::Many(Vec::new()).types(),
+        Vec::<PostTypeName>::new()
+    );
+    assert_ne!(
+        PostTypeArg::One(page.clone()),
+        PostTypeArg::Many(vec![page])
+    );
+    let posts: Rc<dyn Posts> = Rc::new(Dummy);
+    let found = posts
+        .page_by_path("about", &PostTypeArg::One(PostTypeName::new("book")))
+        .unwrap();
+    assert_eq!(found.map(|p| p.post_type), Some(PostTypeName::new("book")));
 }
 
 #[test]

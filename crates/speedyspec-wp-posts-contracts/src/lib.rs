@@ -19,7 +19,7 @@ pub use ports::{
     BadSlugs, Clock, CurrentPost, PageRow, PostQuery, PostReader, PostRepository, PostStatuses,
     PostTypeSupports, PostTypes, RewriteContext, SlugTruncation, TitleSanitizer, Translator,
 };
-pub use read::{Filter, LastPostField, PostRef, Posts, Timezone};
+pub use read::{Filter, LastPostField, MimeFilter, PostRef, PostTypeArg, Posts, Timezone};
 pub use values::{
     CommentStatus, MimeType, PingStatus, PostDate, PostDateTime, PostId, PostStatusName,
     PostStatusObject, PostType, PostTypeName, Slug,
