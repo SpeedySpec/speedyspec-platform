@@ -2044,6 +2044,8 @@ name = "speedyspec-wp-posts-contracts"
 version = "0.2.0"
 dependencies = [
  "speedyspec-php-serialize",
+ "speedyspec-wp-hooks-contracts",
+ "speedyspec-wp-object-cache-contracts",
 ]
 
 [[package]]

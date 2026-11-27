@@ -4,7 +4,7 @@
 [![docs.rs](https://docs.rs/speedyspec-wp-posts-contracts/badge.svg)](https://docs.rs/speedyspec-wp-posts-contracts)
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 
-WordPress's post contracts: the post entity and its values, post type and status names and values, the errors and the ports.
+WordPress's post contracts: the post entity and its values, post type and status names and values, the read surface, the errors and the ports.
 
 Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platform).
 **Role:** contracts. **Seam:** [`query`](https://github.com/SpeedySpec/speedyspec-guide/tree/main/seams/query).
@@ -13,7 +13,15 @@ Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platf
 
 - `Post`: the post entity, a plain object.
 - Values: `PostId`, `PostTypeName`, `PostStatusName`, `Slug`, `PostDateTime` and the post type and status objects.
-- The repository ports, `PostError` and `PostTypeError`, and a `conformance` suite.
+- `Posts`: reading posts, one method per `post.php` function (`get_post()`, the field readers, pages and
+  hierarchy, counts, the last post dates and the `posts` cache functions), with `PostRef`, `Filter`, `Timezone`,
+  `LastPostField`, and `MimeFilter` and `PostTypeArg`, which keep WordPress's string-or-array arguments apart.
+- `PostRepository`: one method per `wp_posts` statement `post.php` sends, each documented with WordPress 7.2-RC2's
+  text, and `PageRow`.
+- `CurrentPost` (the global `$post`) and `PostQuery` (`WP_Query`, opaque until the query seam is ported).
+- `PostError`, which carries a hook's failure or a cache error whole, `PostTypeError`, and a `conformance` suite.
+  `PostError` is not `Send` or `Sync`: a hook error's payload (a PHP exception) is held in an `Rc`, as in the
+  metadata contracts' errors.
 
 ## Install
 
@@ -46,7 +54,7 @@ seam's PHP twin.
 
 See the guide's query seam.
 
-**Ports:** `BadSlugs`, `Clock`, `PostReader`, `PostRepository`, `PostStatuses`, `PostTypeSupports`, `PostTypes`, `RewriteContext`, `SlugTruncation`, `TitleSanitizer`, `Translator`.
+**Ports:** `BadSlugs`, `Clock`, `CurrentPost`, `PostQuery`, `PostReader`, `PostRepository`, `Posts`, `PostStatuses`, `PostTypeSupports`, `PostTypes`, `RewriteContext`, `SlugTruncation`, `TitleSanitizer`, `Translator`.
 
 ## Versioning
 
