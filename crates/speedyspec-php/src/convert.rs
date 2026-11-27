@@ -555,7 +555,8 @@ pub(crate) unsafe fn write_without_engine(out: *mut zval, value: &Value) -> bool
                 // SAFETY: `out` is writable; the handle's zval is live, and
                 // the copy takes its own reference (ZVAL_COPY).
                 unsafe {
-                    ptr::copy_nonoverlapping(handle.as_ptr(), out, 1);
+                    (*out).value = (*handle.as_ptr()).value;
+                    (*out).u1 = (*handle.as_ptr()).u1;
                     add_ref(out);
                 }
                 true
@@ -611,7 +612,9 @@ unsafe fn write(out: *mut zval, value: &Value, depth: usize) -> Result<(), Uncon
             }
             Value::Opaque(_) => {
                 let handle = handle_of(value).ok_or(Unconvertible::ForeignOpaque)?;
-                ptr::copy_nonoverlapping(handle.as_ptr(), out, 1);
+                // ZVAL_COPY_VALUE: the value and its type, never `u2`, which a hash bucket uses for its chain.
+                (*out).value = (*handle.as_ptr()).value;
+                (*out).u1 = (*handle.as_ptr()).u1;
                 add_ref(out);
             }
         }
