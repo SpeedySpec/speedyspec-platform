@@ -60,7 +60,7 @@ pub fn meta_repository_suite(repo: &dyn MetaRepository) {
     let rows = repo.for_objects(&[ObjectId(1)]).expect("for_objects");
     let values: Vec<Option<&[u8]>> = rows
         .iter()
-        .map(|m| m.value.as_ref().map(SerializedValue::as_bytes))
+        .map(|r| r.value.as_ref().map(SerializedValue::as_bytes))
         .collect();
     ensure(
         "update_by_key_all_rows",
@@ -272,7 +272,7 @@ pub fn meta_repository_suite(repo: &dyn MetaRepository) {
         || format!("{gone} {gone_again} {never}"),
     );
 
-    // for_objects_ordered_by_id: rows of objects 7 and 3 interleaved come back in id order
+    // for_objects_ordered_by_id: rows of objects 7 and 3 interleaved come back in id order, without the id
     let order = key("order");
     let o1 = add(7, &order, Some(&val("a")));
     let o2 = add(3, &order, Some(&val("b")));
@@ -281,29 +281,40 @@ pub fn meta_repository_suite(repo: &dyn MetaRepository) {
     let rows = repo
         .for_objects(&[ObjectId(7), ObjectId(3)])
         .expect("for_objects");
-    let ours: Vec<(MetaId, ObjectId)> = rows
+    let ours: Vec<(ObjectId, Option<SerializedValue>)> = rows
         .iter()
-        .filter(|m| m.key == order)
-        .map(|m| (m.mid, m.object_id))
+        .filter(|r| r.key == order)
+        .map(|r| (r.object_id, r.value.clone()))
         .collect();
-    let mids: Vec<MetaId> = rows.iter().map(|m| m.mid).collect();
-    let mut sorted_mids = mids.clone();
-    sorted_mids.sort();
     ensure(
         "for_objects_ordered_by_id",
         ours == [
-            (o1, ObjectId(7)),
-            (o2, ObjectId(3)),
-            (o3, ObjectId(7)),
-            (o4, ObjectId(3)),
-        ] && mids == sorted_mids,
-        || format!("{ours:?} {mids:?}"),
+            (ObjectId(7), Some(val("a"))),
+            (ObjectId(3), Some(val("b"))),
+            (ObjectId(7), Some(val("c"))),
+            (ObjectId(3), Some(val("d"))),
+        ],
+        || format!("{ours:?}"),
     );
     let unlisted = repo.for_objects(&[ObjectId(7)]).expect("for_objects");
     ensure(
         "for_objects_ordered_by_id",
-        unlisted.iter().all(|m| m.object_id == ObjectId(7)) && unlisted.len() == 2,
+        unlisted.iter().all(|r| r.object_id == ObjectId(7)) && unlisted.len() == 2,
         || format!("{unlisted:?}"),
+    );
+
+    // ids_of_object_every_key: every row of the object, whatever its key, and no other object's
+    let mut of_seven = repo.ids_of_object(ObjectId(7)).expect("ids_of_object");
+    of_seven.sort();
+    let mut of_three = repo.ids_of_object(ObjectId(3)).expect("ids_of_object");
+    of_three.sort();
+    let mut expected_three = vec![s1, s2, o2, o4];
+    expected_three.sort();
+    let of_nothing = repo.ids_of_object(ObjectId(99)).expect("ids_of_object");
+    ensure(
+        "ids_of_object_every_key",
+        of_seven == [o1, o3] && of_three == expected_three && of_nothing.is_empty(),
+        || format!("{of_seven:?} {of_three:?} {of_nothing:?}"),
     );
 
     // for_objects_empty_list_is_empty
