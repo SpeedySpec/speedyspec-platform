@@ -14,6 +14,10 @@ Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platf
 - `Catalogue`, `Scenario` and `Fixture`: an area's scenarios and what WordPress's own code returned for them.
 - `ScenarioRunner`: one side of a replay (WordPress, or a port); `PhpRunner` runs scenarios in the embedded PHP.
 - `replay`: runs an area's scenarios through a runner and returns each `Mismatch` against the fixture.
+- Recording writes: a scenario or step may freeze PHP's clock (`clock`), log a user in (`user`), snapshot tables'
+  rows ordered by primary key (`snapshot`) and report the normalised cron schedule (`cron`). The clock decorates
+  `time()`, `microtime()`, `date()`/`gmdate()` without a timestamp and `DateTime` "now" in the engine's function
+  table, so `current_time()` and `wp_date()` follow it.
 - `try_compat_dir`: where the catalogue lives. It reads `SPEEDYSPEC_COMPAT_DIR` and has no fallback.
 
 ## Install

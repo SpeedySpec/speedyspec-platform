@@ -17,6 +17,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[cfg(feature = "embed")]
+mod clock;
 mod mirror;
 mod php;
 mod record;
@@ -45,7 +47,26 @@ pub struct Scenario {
     /// Recorded on a multisite install, into the `-multisite` fixture, and replayed on a multisite port.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub multisite: bool,
+    /// Freezes PHP's clock at this Unix time for the whole scenario (see [`Step::clock`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock: Option<i64>,
+    /// Logs this user in (`wp_set_current_user`) once the area's setup has run, before the first step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<i64>,
+    /// The tables every step snapshots, unless the step names its own (see [`Step::snapshot`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<Vec<String>>,
+    /// Whether every step reports the cron schedule, unless the step says otherwise (see [`Step::cron`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron: Option<bool>,
     pub steps: Vec<Step>,
+}
+
+impl Scenario {
+    /// Whether the scenario or one of its steps freezes the clock.
+    pub fn uses_clock(&self) -> bool {
+        self.clock.is_some() || self.steps.iter().any(|s| s.clock.is_some())
+    }
 }
 
 /// One call: a function, `Class::method`, `$var->method` on a value kept with `as`, `new WP_Hook`, or a
@@ -59,6 +80,20 @@ pub struct Step {
     /// Keeps the step's value under this name, for later steps.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "as")]
     pub keep_as: Option<String>,
+    /// Moves the frozen clock to this Unix time from this step on: `time()`, `microtime()`, `date()` and `gmdate()`
+    /// without a timestamp, and `DateTime` "now" (so `current_time()` and `wp_date()`) answer it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock: Option<i64>,
+    /// Logs this user in (`wp_set_current_user`) before the call; the user stays for later steps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<i64>,
+    /// After the call, reports these tables' rows ([`StepResult::snapshot`]), ordered by primary key. Overrides the
+    /// scenario's `snapshot`; an empty list reports none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<Vec<String>>,
+    /// After the call, reports the cron schedule ([`StepResult::cron`]). Overrides the scenario's `cron`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron: Option<bool>,
 }
 
 /// What one area recorded from one WordPress release.
@@ -77,6 +112,15 @@ pub struct StepResult {
     /// The area's own snapshot after the step (`SpeedySpecCompat::$state`), when its support file sets one.
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub state: Value,
+    /// The rows of the tables the step snapshots, by table, each ordered by its primary key; null when it snapshots
+    /// none.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub snapshot: Value,
+    /// The `cron` option's schedule after the step, normalised: one `{timestamp, hook, schedule, interval, args}` per
+    /// event, ordered by timestamp, hook and argument key, without the option's `version`; null when the step does
+    /// not report it.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub cron: Value,
 }
 
 /// One callback fixture's invocation.
@@ -297,6 +341,15 @@ fn describe(want: &StepResult, got: &StepResult) -> String {
             &w.wp_current_filter,
             &g.wp_current_filter,
         ),
+    ] {
+        if a != b {
+            return format!("{name}: {}", pair(a, b));
+        }
+    }
+    for (name, a, b) in [
+        ("state", &want.state, &got.state),
+        ("snapshot", &want.snapshot, &got.snapshot),
+        ("cron", &want.cron, &got.cron),
     ] {
         if a != b {
             return format!("{name}: {}", pair(a, b));

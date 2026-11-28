@@ -21,6 +21,8 @@ fn result(returned: serde_json::Value) -> StepResult {
             wp_current_filter: json!([]),
         },
         state: serde_json::Value::Null,
+        snapshot: serde_json::Value::Null,
+        cron: serde_json::Value::Null,
     }
 }
 
@@ -162,5 +164,61 @@ fn the_compat_dir_is_the_environment_s_and_nothing_else() {
     assert_eq!(
         speedyspec_compat::try_compat_dir(),
         Err("no compat catalogue: set SPEEDYSPEC_COMPAT_DIR".to_owned())
+    );
+}
+
+#[test]
+fn write_options_round_trip_and_stay_out_when_unset() {
+    let scenario: Scenario = serde_json::from_value(json!({
+        "name": "writes", "clock": 1767225600, "user": 1, "snapshot": ["wp_posts"], "cron": true,
+        "steps": [
+            { "call": "wp_insert_post", "args": [{}], "clock": 1767225660, "user": 2, "snapshot": [], "cron": false },
+            { "call": "get_post", "args": [1] }
+        ]
+    }))
+    .unwrap();
+    assert_eq!(scenario.clock, Some(1_767_225_600));
+    assert_eq!(scenario.steps[0].snapshot, Some(vec![]));
+    assert!(scenario.uses_clock());
+    let again: Scenario = serde_json::from_str(&serde_json::to_string(&scenario).unwrap()).unwrap();
+    assert_eq!(again, scenario);
+    let plain = &catalogue().scenarios[0];
+    assert!(!plain.uses_clock());
+    let text = serde_json::to_string(plain).unwrap();
+    for field in ["clock", "user", "snapshot", "cron"] {
+        assert!(!text.contains(field), "{text}");
+    }
+}
+
+#[test]
+fn snapshot_and_cron_round_trip_and_a_difference_is_a_mismatch() {
+    let mut with = result(json!(1));
+    with.snapshot = json!({ "array": [["wp_posts", { "array": [] }]] });
+    with.cron = json!({ "array": [] });
+    let text = serde_json::to_string(&with).unwrap();
+    assert_eq!(serde_json::from_str::<StepResult>(&text).unwrap(), with);
+    let without = serde_json::to_string(&result(json!(1))).unwrap();
+    assert!(
+        !without.contains("snapshot") && !without.contains("cron"),
+        "{without}"
+    );
+
+    struct Snapshots(serde_json::Value);
+    impl ScenarioRunner for Snapshots {
+        fn run(&mut self, scenario: &Scenario) -> Result<Vec<StepResult>, String> {
+            let mut results = fixture().results.remove(&scenario.name).unwrap();
+            if scenario.name == "two" {
+                results[0].snapshot = self.0.clone();
+            }
+            Ok(results)
+        }
+    }
+    let mut runner = Snapshots(json!({ "array": [["wp_posts", { "array": [[0, "row"]] }]] }));
+    let mismatches = replay_with(&catalogue(), &fixture(), &Breaks::default(), &mut runner);
+    assert_eq!(mismatches.len(), 1, "{mismatches:?}");
+    assert!(
+        mismatches[0].detail.starts_with("snapshot: "),
+        "{}",
+        mismatches[0].detail
     );
 }

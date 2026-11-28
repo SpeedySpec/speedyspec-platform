@@ -45,6 +45,15 @@ final class SpeedySpecCompat
     /** Whether a string that is not valid UTF-8 is reported as `{"bytes": base64}` (formatting needs exact bytes). */
     public static bool $exact_bytes = false;
 
+    /** @var list<string> The tables each step snapshots unless it names its own (the scenario's `snapshot`). */
+    public static array $snapshot = [];
+
+    /** Whether each step reports the cron schedule unless it says otherwise (the scenario's `cron`). */
+    public static bool $cron = false;
+
+    /** The connection table snapshots read through, apart from `$wpdb` so they leave no trace in what a step reports. */
+    private static ?mysqli $snapshot_db = null;
+
     /**
      * Creates, or finds again, the callable a fixture specification names.
      */
@@ -208,8 +217,14 @@ final class SpeedySpecCompat
      */
     public static function step(array $step): array
     {
+        if (isset($step['clock'])) {
+            self::freeze((int) $step['clock']);
+        }
         self::$invocations = [];
         try {
+            if (isset($step['user'])) {
+                wp_set_current_user((int) $step['user']);
+            }
             $returned = self::normalise(self::call($step['call'], self::args($step['args'] ?? []), $step));
         } catch (Throwable $e) {
             $returned = ['threw' => get_class($e), 'message' => $e->getMessage()];
@@ -218,7 +233,114 @@ final class SpeedySpecCompat
         if (self::$state !== null) {
             $report['state'] = self::normalise((self::$state)());
         }
+        $tables = $step['snapshot'] ?? self::$snapshot;
+        if ($tables !== []) {
+            $report['snapshot'] = self::normalise(self::snapshot($tables));
+        }
+        if ($step['cron'] ?? self::$cron) {
+            $report['cron'] = self::normalise(self::cron());
+        }
         return $report;
+    }
+
+    /**
+     * Freezes PHP's clock at a Unix time: the embedding process decorates `time()`, `microtime()`, `date()`,
+     * `gmdate()` and `DateTime` "now" to answer the global this sets (speedyspec-compat's clock module).
+     */
+    public static function freeze(int $clock): void
+    {
+        $GLOBALS['speedyspec_compat_clock'] = $clock;
+    }
+
+    /**
+     * The rows of each table, by table, ordered by its primary key (by every column when it has none).
+     *
+     * The rows are read through a connection of the driver's own, made from the `DB_*` constants, so a snapshot runs
+     * no `query` filter and changes none of `$wpdb`'s counters or last results. Values are as MySQL sends them
+     * (strings, or null).
+     *
+     * @param list<string> $tables
+     * @return array<string, list<array<string, string|null>>>
+     */
+    private static function snapshot(array $tables): array
+    {
+        $db = self::snapshot_db();
+        $out = [];
+        foreach ($tables as $table) {
+            if (!is_string($table) || !preg_match('/^[A-Za-z0-9_]+$/', $table)) {
+                throw new LogicException('a snapshot names a table by its plain name, not ' . json_encode($table));
+            }
+            $keys = [];
+            foreach ($db->query("SHOW KEYS FROM `$table` WHERE Key_name = 'PRIMARY'")->fetch_all(MYSQLI_ASSOC) as $key) {
+                $keys[(int) $key['Seq_in_index']] = '`' . $key['Column_name'] . '`';
+            }
+            ksort($keys);
+            if ($keys === []) {
+                $count = count($db->query("SHOW COLUMNS FROM `$table`")->fetch_all());
+                $keys = range(1, max(1, $count));
+            }
+            $out[$table] = $db->query("SELECT * FROM `$table` ORDER BY " . implode(', ', $keys))->fetch_all(MYSQLI_ASSOC);
+        }
+        return $out;
+    }
+
+    private static function snapshot_db(): mysqli
+    {
+        if (self::$snapshot_db !== null) {
+            return self::$snapshot_db;
+        }
+        if (!defined('DB_HOST') || !defined('DB_NAME')) {
+            throw new LogicException('a snapshot needs the DB_* constants the area defines for wpdb');
+        }
+        $host = DB_HOST;
+        $port = null;
+        $socket = null;
+        if (preg_match('/^(.*):(\d+)$/', $host, $m)) {
+            [$host, $port] = [$m[1], (int) $m[2]];
+        } elseif (preg_match('/^(.*):(\/.+)$/', $host, $m)) {
+            [$host, $socket] = [$m[1] === '' ? 'localhost' : $m[1], $m[2]];
+        }
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+        $db = new mysqli($host, defined('DB_USER') ? DB_USER : '', defined('DB_PASSWORD') ? DB_PASSWORD : '', DB_NAME, $port, $socket);
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $db->set_charset('utf8mb4');
+        return self::$snapshot_db = $db;
+    }
+
+    /**
+     * The `cron` option's schedule, normalised: one event per entry, ordered by timestamp, hook and argument key,
+     * without the option's `version` (WordPress's own `_get_cron_array()` when cron.php is loaded).
+     *
+     * @return list<array{timestamp: int|string, hook: string, schedule: mixed, interval: mixed, args: mixed}>
+     */
+    private static function cron(): array
+    {
+        if (function_exists('_get_cron_array')) {
+            $crons = _get_cron_array();
+        } elseif (function_exists('get_option')) {
+            $crons = get_option('cron');
+        } else {
+            throw new LogicException('reporting the cron schedule needs the option API');
+        }
+        $events = [];
+        foreach (is_array($crons) ? $crons : [] as $timestamp => $hooks) {
+            if ($timestamp === 'version' || !is_array($hooks)) {
+                continue;
+            }
+            foreach ($hooks as $hook => $keyed) {
+                foreach (is_array($keyed) ? $keyed : [] as $key => $event) {
+                    $events[] = [(int) $timestamp, (string) $hook, (string) $key, [
+                        'timestamp' => $timestamp,
+                        'hook' => $hook,
+                        'schedule' => $event['schedule'] ?? false,
+                        'interval' => $event['interval'] ?? null,
+                        'args' => $event['args'] ?? [],
+                    ]];
+                }
+            }
+        }
+        usort($events, static fn (array $a, array $b): int => [$a[0], $a[1], $a[2]] <=> [$b[0], $b[1], $b[2]]);
+        return array_column($events, 3);
     }
 
     private static function call(string $call, array $args, array $step): mixed
@@ -427,12 +549,24 @@ if (!function_exists('_deprecated_hook')) {
 
 /**
  * Runs a scenario (JSON) and reports its steps (JSON).
+ *
+ * The scenario may freeze the clock (`clock`), log a user in after the area's setup (`user`), and name the tables
+ * every step snapshots (`snapshot`) and whether every step reports the cron schedule (`cron`); a step may override
+ * each of them.
  */
 function speedyspec_compat_run(string $scenario): string
 {
     $scenario = json_decode($scenario, true, 512, JSON_THROW_ON_ERROR);
+    if (isset($scenario['clock'])) {
+        SpeedySpecCompat::freeze((int) $scenario['clock']);
+    }
+    SpeedySpecCompat::$snapshot = $scenario['snapshot'] ?? [];
+    SpeedySpecCompat::$cron = (bool) ($scenario['cron'] ?? false);
     if (function_exists('speedyspec_compat_area_setup')) {
         speedyspec_compat_area_setup();
+    }
+    if (isset($scenario['user'])) {
+        wp_set_current_user((int) $scenario['user']);
     }
     $report = [];
     foreach ($scenario['steps'] as $step) {

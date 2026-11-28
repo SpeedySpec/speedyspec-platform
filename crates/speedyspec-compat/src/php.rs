@@ -11,7 +11,8 @@ pub const DRIVER: &str = include_str!("driver.php");
 type Setup = Box<dyn Fn(&Php) -> Result<(), String>>;
 
 /// Runs each scenario in a fresh request: `setup` loads the implementation under test (WordPress's files when
-/// recording, nothing when the port is native), then the driver runs the steps.
+/// recording, nothing when the port is native), then the driver runs the steps. A scenario with a `clock` first gets
+/// PHP's frozen clock (the crate's `clock` module: the time builtins are decorated in the engine's function table).
 pub struct PhpRunner {
     php: Php,
     setup: Setup,
@@ -35,6 +36,10 @@ impl ScenarioRunner for PhpRunner {
         self.php
             .restart_request()
             .map_err(|e| format!("starting a request: {e}"))?;
+        #[cfg(feature = "embed")]
+        if scenario.uses_clock() {
+            crate::clock::install()?;
+        }
         (self.setup)(&self.php)?;
         self.php
             .eval("speedyspec://compat/driver", DRIVER)
