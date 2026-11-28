@@ -97,7 +97,11 @@ pub struct PostId(pub u64);
 ///   ([`PostParent::prepared`]).
 ///
 /// Any other value the filter returns reaches the statements through `%d`, so a binding reduces it to the integer PHP's
-/// `intval()` gives ([`PostParent::Int`]).
+/// `intval()` gives ([`PostParent::Int`]). That matches every statement, but it is a known divergence for the hooks:
+/// WordPress hands the filter's raw value on to `wp_unique_post_slug()`, its `pre_wp_unique_post_slug` and
+/// `wp_unique_post_slug_is_bad_hierarchical_slug` filters and the `wp_insert_post_data` filter (`'7'`, not `7`; `7.5`,
+/// not `7`), while this type carries only the integer. It is not modelled: a raw PHP value would cost the entity its
+/// `Copy`, `Eq` and `Hash`. A use case that must pass the raw value to those filters keeps it beside the entity.
 ///
 /// So a post being written carries this value, and a repository stores [`Self::stored`]. A row read back is never
 /// negative or null. [`PostId`] stays the type of ids and of the parents the read statements return

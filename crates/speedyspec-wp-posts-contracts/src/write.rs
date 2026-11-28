@@ -20,35 +20,75 @@ use crate::{Post, PostError, PostId, PostRef, PostStatusName, PostWriteError};
 /// never gets that far: `get_post()` finds no post and WordPress answers `invalid_post`.
 pub type WriteResult = Result<PostId, PostWriteError>;
 
-/// A post object a PHP caller passed or WordPress built: its typed columns and, when there is one, the PHP object
-/// itself.
+/// A post object a PHP caller passed or WordPress built: its typed columns, the dynamic properties WordPress set on
+/// it, and, when there is one, the PHP object itself.
 ///
-/// WordPress passes post objects by handle: the hooks `wp_transition_post_status()` fires receive the caller's object,
-/// `wp_publish_post()` sets `$post->post_status = 'publish'` on the object it was given, and `wp_insert_post()` sets a
-/// dynamic `page_template` property on the object its later hooks receive. `handle` is that object, carried opaque
-/// ([`HookValue::Opaque`] for a PHP object), so an implementation passes the same value to every hook and writes back
-/// to it through the binding; the caller sees the changes. With `handle` as `None` there is no PHP object yet, and the
-/// binding builds one `WP_Post` from `post` and passes that same one to every hook of the call.
+/// WordPress passes post objects by handle:
+///
+/// - the hooks `wp_transition_post_status()` fires receive the caller's object;
+/// - `wp_publish_post()` sets `$post->post_status = 'publish'` on the object it was given;
+/// - `wp_insert_post()` builds `$post = get_post( $post_id )`, sets a dynamic `page_template` property on it (post.php
+///   5402), and passes that one object to `wp_transition_post_status()`, `edit_post`, `save_post_{$post_type}`,
+///   `save_post`, `wp_insert_post` and `wp_after_insert_post`; `wp_publish_post()`, `wp_trash_post()`,
+///   `wp_untrash_post()` and `wp_delete_post()` likewise fire several hooks with one `get_post()` instance.
+///
+/// `handle` is that object, carried opaque ([`HookValue::Opaque`] for a PHP object), so an implementation passes the
+/// same value to every hook it fires and writes back to it through the binding; the caller sees the changes. With
+/// `handle` as `None` there is no PHP object yet: the binding builds one `WP_Post` from `post` and `properties`, and a
+/// use case keeps the object it gets back (from [`PostWrites::transition`]) for its later hooks, so one call builds
+/// one object.
+///
+/// `properties` are the dynamic properties WordPress sets on the object beyond its columns, in the order it sets them
+/// (`page_template`). The binding sets them on the object it builds; with a handle, they are already on it.
+///
+/// It is `#[non_exhaustive]`: build it with [`PostObject::new`] or [`PostObject::with_handle`], then
+/// [`PostObject::with_property`].
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct PostObject {
     /// The object's columns, typed.
     pub post: Post,
     /// The PHP object, when there is one.
     pub handle: Option<HookValue>,
+    /// The dynamic properties WordPress set on the object, by name, in the order it set them.
+    pub properties: Vec<(String, HookValue)>,
 }
 
 impl PostObject {
-    /// A post with no PHP object yet.
+    /// A post with no PHP object yet and no dynamic properties.
     pub fn new(post: Post) -> Self {
-        Self { post, handle: None }
+        Self {
+            post,
+            handle: None,
+            properties: Vec::new(),
+        }
     }
 
     /// A post and the PHP object it was read from.
     pub fn with_handle(post: Post, handle: HookValue) -> Self {
         Self {
-            post,
             handle: Some(handle),
+            ..Self::new(post)
         }
+    }
+
+    /// The same object with a dynamic property set: replaced in place when it is already set, otherwise appended, as
+    /// PHP keeps a property's first position.
+    pub fn with_property(mut self, name: impl Into<String>, value: HookValue) -> Self {
+        let name = name.into();
+        match self.properties.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, slot)) => *slot = value,
+            None => self.properties.push((name, value)),
+        }
+        self
+    }
+
+    /// One dynamic property.
+    pub fn property(&self, name: &str) -> Option<&HookValue> {
+        self.properties
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v)
     }
 }
 
@@ -56,6 +96,16 @@ impl PostObject {
 ///
 /// `get_post()` hands back a raw `WP_Post` it is given as that same instance, so the functions taking a
 /// [`PostArg::Object`] read the object's own values (not the table's), fire their hooks with it, and return it.
+///
+/// Only a `WP_Post` whose `filter` is `raw` keeps its identity that way. `get_post()` re-reads any other
+/// `WP_Post` (`WP_Post::filter( 'raw' )` calls `get_instance()`, class-wp-post.php 423-424), unset `filter` included, and copies a `stdClass` into a new
+/// `WP_Post` (post.php 1153-1159), so the binding sends those as [`PostArg::Ref`] with the id, or as an object with
+/// no handle ([`PostObject::new`]).
+///
+/// An empty argument falls back to the global `$post`. [`crate::CurrentPost`] reads it as a value with no handle, so
+/// to keep its identity the binding passes the global `WP_Post` as [`PostArg::Object`] with its handle; it passes
+/// [`PostRef::Current`] only when it has no object to pass (the global is unset, or holds something other than a
+/// `WP_Post`).
 #[derive(Clone, Debug, PartialEq)]
 pub enum PostArg {
     /// An id, or the global `$post` (an empty argument).
@@ -140,12 +190,17 @@ pub trait PostWrites {
     /// `{$old_status}_to_{$new_status}` and `{$new_status}_{$post_type}` as the statuses and post type are registered.
     /// `old` may be `new`, as `wp_insert_post()` passes for a new post. The three hooks receive `post`'s handle, the
     /// same object each time.
+    ///
+    /// WordPress returns nothing. The answer is the object the hooks received, its handle set: `post`'s own, or the
+    /// one the binding built from `post` and its properties when it had none. A use case passes that object to the
+    /// hooks it fires afterwards (`edit_post`, `save_post`, `wp_insert_post`, `wp_after_insert_post`), so they share
+    /// one object as WordPress's do.
     fn transition(
         &self,
         new: &PostStatusName,
         old: &PostStatusName,
         post: &PostObject,
-    ) -> Result<(), PostError>;
+    ) -> Result<PostObject, PostError>;
 
     /// `stick_post( $post_id )`; `post_id` is `(int) $post_id`, the value added to `sticky_posts`.
     fn stick(&self, post_id: i64) -> Result<(), PostError>;

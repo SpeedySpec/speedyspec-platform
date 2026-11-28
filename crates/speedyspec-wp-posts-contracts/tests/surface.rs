@@ -12,7 +12,9 @@ use speedyspec_wp_posts_contracts::{
     PostError, PostId, PostParent, PostQuery, PostRef, PostRepository, PostStatusName, PostTypeArg,
     PostTypeName, Posts, Slug, Timezone,
 };
-use speedyspec_wp_posts_contracts::{PostArg, PostObject, PostReturn, PostWriteError, WriteResult};
+use speedyspec_wp_posts_contracts::{
+    PostArg, PostObject, PostReturn, PostWriteError, PostWrites, WriteResult,
+};
 
 struct Dummy;
 
@@ -459,4 +461,53 @@ fn a_written_id_is_an_integer_post_id() {
     assert_eq!(saved, Ok(PostId(8)));
     assert_eq!(zero, Ok(PostId(0)));
     assert!(failed.is_err());
+}
+
+#[test]
+fn a_post_object_carries_the_properties_wordpress_sets_on_it() {
+    // `wp_insert_post()` sets `$post->page_template` on the object its later hooks share (post.php 5402).
+    let object = PostObject::new(Post::default())
+        .with_property("page_template", HookValue::Str("tpl.php".to_string()))
+        .with_property("extra", HookValue::Int(1))
+        .with_property("page_template", HookValue::Str("default".to_string()));
+    // Set again, it keeps its first position, as a PHP property does.
+    assert_eq!(
+        object.properties,
+        vec![
+            (
+                "page_template".to_string(),
+                HookValue::Str("default".to_string())
+            ),
+            ("extra".to_string(), HookValue::Int(1)),
+        ]
+    );
+    assert_eq!(object.property("extra"), Some(&HookValue::Int(1)));
+    assert_eq!(object.property("missing"), None);
+    assert!(object.handle.is_none());
+
+    // A handle keeps its properties empty until WordPress sets one.
+    let handled = PostObject::with_handle(Post::default(), HookValue::Int(9));
+    assert!(handled.properties.is_empty());
+    assert_eq!(handled.handle, Some(HookValue::Int(9)));
+}
+
+#[test]
+fn transition_hands_back_the_object_its_hooks_received() {
+    // The use case keeps that object for the hooks it fires afterwards, so one call shares one object.
+    let transition: fn(
+        &dyn PostWrites,
+        &PostStatusName,
+        &PostStatusName,
+        &PostObject,
+    ) -> Result<PostObject, PostError> = |writes, new, old, post| writes.transition(new, old, post);
+    let _ = transition;
+}
+
+#[test]
+fn a_null_or_negative_parent_reaches_the_statements_as_an_integer() {
+    // The known divergence: a non-integer `wp_insert_post_parent` return is carried as its `intval()`, which is what
+    // `%d` sends; the later filters' raw value is the use case's to keep.
+    assert_eq!(PostParent::Int(7).prepared(), 7);
+    assert_eq!(PostParent::Null.prepared(), 0);
+    assert_eq!(PostParent::Int(-5).stored(), PostParent::NONE);
 }

@@ -52,9 +52,15 @@ impl PostWrites for Dummy {
         &self,
         _: &PostStatusName,
         _: &PostStatusName,
-        _: &PostObject,
-    ) -> Result<(), PostError> {
-        Ok(())
+        post: &PostObject,
+    ) -> Result<PostObject, PostError> {
+        // As the binding does: the caller's handle when there is one, otherwise one object built for the call.
+        let mut shared = post.clone();
+        if shared.handle.is_none() {
+            let built: Rc<dyn std::any::Any> = Rc::new(post.post.id);
+            shared.handle = Some(HookValue::Opaque(built));
+        }
+        Ok(shared)
     }
     fn stick(&self, _: i64) -> Result<(), PostError> {
         Ok(())
@@ -252,13 +258,27 @@ fn the_write_surface_is_object_safe_and_callable() {
     writes
         .check_and_publish_future(PostRef::Current.into())
         .unwrap();
-    writes
+    let built = writes
         .transition(
             &PostStatusName::new("publish"),
             &PostStatusName::new("new"),
-            &PostObject::new(Post::default()),
+            &PostObject::new(Post::default())
+                .with_property("page_template", HookValue::Str("default".to_string())),
         )
         .unwrap();
+    assert!(matches!(built.handle, Some(HookValue::Opaque(_))));
+    assert_eq!(
+        built.property("page_template"),
+        Some(&HookValue::Str("default".to_string()))
+    );
+    let kept = writes
+        .transition(
+            &PostStatusName::new("draft"),
+            &PostStatusName::new("publish"),
+            &built,
+        )
+        .unwrap();
+    assert_eq!(kept, built);
     writes.stick(-3).unwrap();
     writes.unstick(3).unwrap();
     assert_eq!(
