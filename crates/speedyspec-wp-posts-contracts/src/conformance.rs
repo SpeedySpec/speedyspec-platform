@@ -2,9 +2,10 @@
 
 use crate::{
     CommentStatus, LastPostField, MimeFilter, MimeType, PageRow, PingStatus, Post, PostDate,
-    PostDateTime, PostError, PostId, PostParent, PostRepository, PostRow, PostStatusName,
-    PostTypeName, RowValue, Slug, Timezone,
+    PostDateTime, PostId, PostParent, PostRepository, PostRow, PostStatusName, PostTypeName,
+    RowValue, Slug, Timezone,
 };
+use speedyspec_wp_hooks_contracts::HookValue;
 
 fn ensure(check: &str, ok: bool, detail: impl FnOnce() -> String) {
     assert!(ok, "post repository check `{check}` failed: {}", detail());
@@ -58,6 +59,7 @@ pub fn read_suite(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
         repo.insert(&PostRow::from_post(post))
             .expect("insert")
+            .written()
             .expect("the insert returns an id")
     };
     let find = |id: PostId| repo.find(id).expect("find");
@@ -83,6 +85,7 @@ pub fn read_suite(repo: &dyn PostRepository) {
             100,
         ))
         .expect("insert")
+        .written()
         .expect("the insert returns an id");
     let next = insert(&named("after-import", "post", 0));
     ensure(
@@ -94,7 +97,8 @@ pub fn read_suite(repo: &dyn PostRepository) {
     // insert_taken_id_is_none
     let taken = repo
         .insert(&with_id(&named("duplicate", "post", 0), 100))
-        .expect("insert");
+        .expect("insert")
+        .written();
     let kept = find(PostId(100)).map(|p| p.name);
     ensure(
         "insert_taken_id_is_none",
@@ -156,6 +160,7 @@ pub fn read_suite(repo: &dyn PostRepository) {
                 .with("comment_count", RowValue::Int(5)),
         )
         .expect("insert")
+        .written()
         .expect("the insert returns an id");
     let added_count = find(added).map(|p| p.comment_count);
     ensure(
@@ -175,6 +180,7 @@ pub fn read_suite(repo: &dyn PostRepository) {
     let dropped_id = repo
         .insert(&dropped)
         .expect("insert")
+        .written()
         .expect("the insert returns an id");
     let defaulted = find(dropped_id);
     ensure(
@@ -193,29 +199,55 @@ pub fn read_suite(repo: &dyn PostRepository) {
             &PostRow::from_post(&named("unknown-column", "post", 0))
                 .with("bogus", RowValue::Str(b"x".to_vec())),
         )
-        .expect("insert");
+        .expect("insert")
+        .written();
     let unknown_owner = repo
         .flat_slug_owner(&slug("unknown-column"), &post_type("post"), PostId(0))
         .expect("flat_slug_owner");
-    let empty = repo.insert(&PostRow::new()).expect("insert");
+    let empty = repo.insert(&PostRow::new()).expect("insert").written();
     ensure(
         "insert_of_an_added_unknown_column_or_an_empty_row_is_none",
         unknown.is_none() && unknown_owner.is_none() && empty.is_none(),
         || format!("{unknown:?} {unknown_owner:?} {empty:?}"),
     );
 
-    // insert_of_a_value_that_does_not_fit_its_column_is_an_error: a text value under `%d`, sent nowhere.
-    let misfit = repo.insert(
-        &PostRow::from_post(&named("misfit", "post", 0))
-            .with("menu_order", RowValue::Str(b"4".to_vec())),
-    );
-    let misfit_owner = repo
-        .flat_slug_owner(&slug("misfit"), &post_type("post"), PostId(0))
-        .expect("flat_slug_owner");
+    // insert_formats_each_php_type: an int under `%s` is its decimal text, a bool `'1'` or `''`, a float its
+    // `(string)`, and a string under `%d` is read as `sprintf( '%d' )` reads it.
+    let typed = repo
+        .insert(
+            &PostRow::from_post(&named("typed", "post", 0))
+                .with("post_title", RowValue::Int(5))
+                .with("post_excerpt", RowValue::Php(HookValue::Bool(true)))
+                .with("post_password", RowValue::Php(HookValue::Bool(false)))
+                .with("post_content", RowValue::Php(HookValue::Float(1.5)))
+                .with("menu_order", RowValue::Str(b"4x".to_vec()))
+                .with("post_author", RowValue::Php(HookValue::Float(2.9))),
+        )
+        .expect("insert")
+        .written()
+        .expect("the insert returns an id");
+    let typed = find(typed);
     ensure(
-        "insert_of_a_value_that_does_not_fit_its_column_is_an_error",
-        matches!(misfit, Err(PostError::Db(_))) && misfit_owner.is_none(),
-        || format!("{misfit:?} {misfit_owner:?}"),
+        "insert_formats_each_php_type",
+        typed.as_ref().is_some_and(|p| {
+            p.title == b"5".to_vec()
+                && p.excerpt == b"1".to_vec()
+                && p.password.is_empty()
+                && p.content == b"1.5".to_vec()
+                && p.menu_order == 4
+                && p.author == 2
+        }),
+        || format!("{typed:?}"),
+    );
+
+    // a_failed_insert_carries_last_error: the engine's message comes back with the failure.
+    let failed = repo
+        .insert(&PostRow::from_post(&named("failed", "post", 0)).with("bogus", RowValue::Int(1)))
+        .expect("insert");
+    ensure(
+        "a_failed_insert_carries_last_error",
+        failed.last_error().is_some_and(|e| !e.is_empty()),
+        || format!("{failed:?}"),
     );
 
     // find_missing_is_none
@@ -364,6 +396,7 @@ pub fn binary_safe_suite(repo: &dyn PostRepository) {
     let id = repo
         .insert(&PostRow::from_post(&post))
         .expect("insert")
+        .written()
         .expect("the insert returns an id");
     let read = repo.find(id).expect("find");
     let owner = repo
@@ -432,6 +465,7 @@ fn read_statements(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
         repo.insert(&PostRow::from_post(post))
             .expect("insert")
+            .written()
             .expect("the insert returns an id")
     };
     let types = |names: &[&str]| names.iter().map(|n| post_type(n)).collect::<Vec<_>>();
@@ -710,6 +744,7 @@ fn last_post_time(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
         repo.insert(&PostRow::from_post(post))
             .expect("insert")
+            .written()
             .expect("the insert returns an id")
     };
     let dated = |kind: &str, status: &str, local: &str, gmt: &str| Post {
@@ -822,6 +857,7 @@ fn write_statements(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
         repo.insert(&PostRow::from_post(post))
             .expect("insert")
+            .written()
             .expect("the insert returns an id")
     };
     let find = |id: PostId| repo.find(id).expect("find").expect("the post exists");
@@ -872,13 +908,16 @@ fn write_statements(repo: &dyn PostRepository) {
     let auto = repo
         .insert(&PostRow::from_post(&named("wr-auto", "wr-post", 0)))
         .expect("insert")
+        .written()
         .expect("the insert returns an id");
     let at_zero = repo
         .insert(&with_id(&named("wr-import-zero", "wr-post", 0), 0))
-        .expect("insert");
+        .expect("insert")
+        .written();
     let at_negative = repo
         .insert(&with_id(&named("wr-import-negative", "wr-post", 0), -5))
-        .expect("insert");
+        .expect("insert")
+        .written();
     let names = |id: Option<PostId>| {
         id.and_then(|id| repo.find(id).expect("find"))
             .map(|p| p.name)
@@ -892,13 +931,38 @@ fn write_statements(repo: &dyn PostRepository) {
         || format!("{auto:?} {at_zero:?} {at_negative:?}"),
     );
 
+    // insert_with_a_null_id_takes_the_next_id: `ID` is AUTO_INCREMENT, so a callback's `'ID' => null` is not rejected.
+    let after_negative = at_negative.expect("the negative id insert");
+    let null_id = repo
+        .insert(&PostRow::from_post(&named("wr-null-id", "wr-post", 0)).with("ID", RowValue::Null))
+        .expect("insert")
+        .written();
+    ensure(
+        "insert_with_a_null_id_takes_the_next_id",
+        null_id == Some(PostId(after_negative.0 + 1)),
+        || format!("{null_id:?}"),
+    );
+
+    // insert_with_id_before_the_other_columns_is_honoured: `import_id` replacing a callback's `ID` where it stands.
+    let first_id = PostRow::new()
+        .with("ID", RowValue::Int(8_700))
+        .with("post_name", RowValue::Str(b"wr-id-first".to_vec()))
+        .with("post_type", RowValue::Str(b"wr-post".to_vec()));
+    let placed = repo.insert(&first_id).expect("insert").written();
+    ensure(
+        "insert_with_id_before_the_other_columns_is_honoured",
+        placed == Some(PostId(8_700)) && names(placed) == Some(slug("wr-id-first")),
+        || format!("{placed:?}"),
+    );
+
     // insert_null_parent_writes_no_row: `NULL` in the `NOT NULL` column is error 1048, so `$wpdb->insert` is false.
     let null_parent = repo
         .insert(&PostRow::from_post(&Post {
             parent: PostParent::Null,
             ..named("wr-null-parent", "wr-page", 0)
         }))
-        .expect("insert");
+        .expect("insert")
+        .written();
     let owner_of_null = repo
         .flat_slug_owner(&slug("wr-null-parent"), &post_type("wr-page"), PostId(0))
         .expect("flat_slug_owner");
@@ -952,10 +1016,13 @@ fn write_statements(repo: &dyn PostRepository) {
         comment_count: 7,
     };
     let changed_row = PostRow::from_post(&changed);
-    let first = repo.update(id, &changed_row).expect("update");
+    let first = repo.update(id, &changed_row).expect("update").written();
     let read = find(id);
-    let again = repo.update(id, &changed_row).expect("update");
-    let nobody = repo.update(missing, &changed_row).expect("update");
+    let again = repo.update(id, &changed_row).expect("update").written();
+    let nobody = repo
+        .update(missing, &changed_row)
+        .expect("update")
+        .written();
     ensure(
         "update_writes_every_column_but_id_and_comment_count",
         first == Some(1)
@@ -978,7 +1045,8 @@ fn write_statements(repo: &dyn PostRepository) {
             ..changed.clone()
         }),
     )
-    .expect("update");
+    .expect("update")
+    .written();
     let stored = find(id).parent;
     ensure(
         "update_negative_parent_is_stored_as_zero",
@@ -994,7 +1062,8 @@ fn write_statements(repo: &dyn PostRepository) {
             ..changed.clone()
         }),
     )
-    .expect("update");
+    .expect("update")
+    .written();
     let nulled = repo
         .update(
             id,
@@ -1003,7 +1072,8 @@ fn write_statements(repo: &dyn PostRepository) {
                 ..changed.clone()
             }),
         )
-        .expect("update");
+        .expect("update")
+        .written();
     let stored = find(id).parent;
     ensure(
         "update_null_parent_is_stored_as_zero",
@@ -1019,7 +1089,7 @@ fn write_statements(repo: &dyn PostRepository) {
         ..before.clone()
     });
     dropped.remove("post_content");
-    let retitled = repo.update(id, &dropped).expect("update");
+    let retitled = repo.update(id, &dropped).expect("update").written();
     let after = find(id);
     ensure(
         "update_keeps_a_dropped_column",
@@ -1032,7 +1102,8 @@ fn write_statements(repo: &dyn PostRepository) {
     // update_writes_an_added_column: a callback that adds `comment_count` writes it.
     let counted = repo
         .update(id, &PostRow::new().with("comment_count", RowValue::Int(3)))
-        .expect("update");
+        .expect("update")
+        .written();
     let count = find(id).comment_count;
     ensure(
         "update_writes_an_added_column",
@@ -1049,8 +1120,9 @@ fn write_statements(repo: &dyn PostRepository) {
                 .with("post_title", RowValue::Str(b"Not written".to_vec()))
                 .with("bogus", RowValue::Str(b"1".to_vec())),
         )
-        .expect("update");
-    let empty = repo.update(id, &PostRow::new()).expect("update");
+        .expect("update")
+        .written();
+    let empty = repo.update(id, &PostRow::new()).expect("update").written();
     let after = find(id);
     ensure(
         "update_of_an_unknown_column_or_an_empty_row_is_none",
@@ -1061,12 +1133,40 @@ fn write_statements(repo: &dyn PostRepository) {
     // update_null_in_a_text_column_stores_its_default: `NULL` in an `UPDATE` is the implicit default, `''`.
     let nulled = repo
         .update(id, &PostRow::new().with("post_excerpt", RowValue::Null))
-        .expect("update");
+        .expect("update")
+        .written();
     let excerpt = find(id).excerpt;
     ensure(
         "update_null_in_a_text_column_stores_its_default",
         nulled == Some(1) && excerpt.is_empty(),
         || format!("{nulled:?} {excerpt:?}"),
+    );
+
+    // update_with_id_in_the_row_sets_it: ``SET `ID` = %d … WHERE `ID` = %d``.
+    let moved_to = PostId(8_800);
+    let moved = repo
+        .update(
+            id,
+            &PostRow::new().with("ID", RowValue::Int(as_int(moved_to))),
+        )
+        .expect("update")
+        .written();
+    let at_old = repo.find(id).expect("find");
+    let at_new = repo.find(moved_to).expect("find");
+    ensure(
+        "update_with_id_in_the_row_sets_it",
+        moved == Some(1) && at_old.is_none() && at_new.is_some(),
+        || format!("{moved:?} {at_old:?} {at_new:?}"),
+    );
+
+    // a_failed_update_carries_last_error
+    let failed = repo
+        .update(moved_to, &PostRow::new().with("bogus", RowValue::Int(1)))
+        .expect("update");
+    ensure(
+        "a_failed_update_carries_last_error",
+        failed.last_error().is_some_and(|e| !e.is_empty()),
+        || format!("{failed:?}"),
     );
 
     column_updates(repo);
@@ -1084,6 +1184,7 @@ fn column_updates(repo: &dyn PostRepository) {
     let id = repo
         .insert(&PostRow::from_post(&base))
         .expect("insert")
+        .written()
         .expect("the insert returns an id");
     let missing = PostId(9_996);
     let read = || repo.find(id).expect("find").expect("the post exists");
@@ -1167,6 +1268,7 @@ fn deleting(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
         repo.insert(&PostRow::from_post(post))
             .expect("insert")
+            .written()
             .expect("the insert returns an id")
     };
     let parent_of = |id: PostId| {
@@ -1311,6 +1413,7 @@ pub fn mysql_suite(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
         repo.insert(&PostRow::from_post(post))
             .expect("insert")
+            .written()
             .expect("the insert returns an id")
     };
 

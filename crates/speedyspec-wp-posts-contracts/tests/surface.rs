@@ -7,11 +7,13 @@ use speedyspec_php_serialize::PhpValue;
 use speedyspec_wp_hooks_contracts::HookError;
 use speedyspec_wp_hooks_contracts::HookValue;
 use speedyspec_wp_object_cache_contracts::ObjectCacheError;
-use speedyspec_wp_posts_contracts::{BadSlugs, ColumnFormat, PostRow, RowValue, column_format};
 use speedyspec_wp_posts_contracts::{
-    CurrentPost, Filter, LastPostField, MimeFilter, MimeType, PageRow, Post, PostDateTime,
+    BadSlugs, ColumnFormat, INT_FIELDS, PostRow, RowValue, WriteOutcome, column_format,
+};
+use speedyspec_wp_posts_contracts::{
+    Clock, CurrentPost, Filter, LastPostField, MimeFilter, MimeType, PageRow, Post, PostDateTime,
     PostError, PostId, PostParent, PostQuery, PostRef, PostRepository, PostStatusName, PostTypeArg,
-    PostTypeName, Posts, Slug, Timezone,
+    PostTypeName, Posts, RewriteContext, Slug, Timezone, Translator,
 };
 use speedyspec_wp_posts_contracts::{
     PostArg, PostObject, PostReturn, PostWriteError, PostWrites, WriteResult,
@@ -101,17 +103,19 @@ impl PostRepository for Dummy {
     fn find(&self, _: PostId) -> Result<Option<Post>, PostError> {
         Ok(None)
     }
-    fn insert(&self, row: &PostRow) -> Result<Option<PostId>, PostError> {
+    fn insert(&self, row: &PostRow) -> Result<WriteOutcome<PostId>, PostError> {
         // As MySQL does: an explicit `ID` above 0 is kept, 0 and below take the next id (50 here), and `NULL` or an
         // unknown column is rejected.
         if row
             .columns()
             .iter()
-            .any(|(name, value)| *value == RowValue::Null || name == "bogus")
+            .any(|(name, value)| *value == RowValue::Null || name == b"bogus")
         {
-            return Ok(None);
+            return Ok(WriteOutcome::failed(
+                "Unknown column 'bogus' in 'field list'",
+            ));
         }
-        Ok(Some(match row.get("ID") {
+        Ok(WriteOutcome::Written(match row.get("ID") {
             Some(RowValue::Int(id)) if *id > 0 => PostId(*id as u64),
             _ => PostId(50),
         }))
@@ -177,8 +181,12 @@ impl PostRepository for Dummy {
     fn available_mime_types(&self, _: &PostTypeName) -> Result<Vec<MimeType>, PostError> {
         Ok(Vec::new())
     }
-    fn update(&self, _: PostId, row: &PostRow) -> Result<Option<u64>, PostError> {
-        Ok((!row.is_empty()).then_some(1))
+    fn update(&self, _: PostId, row: &PostRow) -> Result<WriteOutcome<u64>, PostError> {
+        Ok(if row.is_empty() {
+            WriteOutcome::failed("You have an error in your SQL syntax")
+        } else {
+            WriteOutcome::Written(1)
+        })
     }
     fn update_name(&self, _: PostId, _: &Slug) -> Result<Option<u64>, PostError> {
         Ok(Some(1))
@@ -386,12 +394,21 @@ fn an_import_id_is_present_or_absent_and_signed() {
     let repo: Rc<dyn PostRepository> = Rc::new(Dummy);
     let row = PostRow::from_post(&Post::default());
     let with_id = |id: i64| row.clone().with("ID", RowValue::Int(id));
-    assert_eq!(repo.insert(&row).unwrap(), Some(PostId(50)));
-    assert_eq!(repo.insert(&with_id(0)).unwrap(), Some(PostId(50)));
-    assert_eq!(repo.insert(&with_id(-5)).unwrap(), Some(PostId(50)));
-    assert_eq!(repo.insert(&with_id(100)).unwrap(), Some(PostId(100)));
+    assert_eq!(repo.insert(&row).unwrap().written(), Some(PostId(50)));
+    assert_eq!(
+        repo.insert(&with_id(0)).unwrap().written(),
+        Some(PostId(50))
+    );
+    assert_eq!(
+        repo.insert(&with_id(-5)).unwrap().written(),
+        Some(PostId(50))
+    );
+    assert_eq!(
+        repo.insert(&with_id(100)).unwrap().written(),
+        Some(PostId(100))
+    );
     // `ID` is appended after `compact()`'s columns.
-    assert_eq!(with_id(100).columns().last().unwrap().0, "ID");
+    assert_eq!(with_id(100).columns().last().unwrap().0, b"ID");
     assert!(!repo.import_id_taken(0).unwrap());
     assert!(!repo.import_id_taken(-5).unwrap());
     // `set_post_type()`'s raw id reaches the statement: `WHERE `ID` = -3` changes nothing.
@@ -412,7 +429,7 @@ fn a_null_parent_is_representable() {
     };
     let row = PostRow::from_post(&post);
     assert_eq!(row.get("post_parent"), Some(&RowValue::Null));
-    assert_eq!(repo.insert(&row).unwrap(), None);
+    assert_eq!(repo.insert(&row).unwrap().written(), None);
     assert_eq!(post.parent.prepared(), 0);
     assert!(
         repo.hierarchical_slug_owner(
@@ -537,7 +554,11 @@ fn the_read_and_write_suites_run_apart() {
 fn a_row_is_the_filtered_data_in_its_order() {
     // `compact()`'s 21 columns, in its order, with no `ID` and no `comment_count`.
     let row = PostRow::from_post(&Post::default());
-    let names: Vec<&str> = row.columns().iter().map(|(n, _)| n.as_str()).collect();
+    let names: Vec<&str> = row
+        .columns()
+        .iter()
+        .map(|(n, _)| std::str::from_utf8(n).unwrap())
+        .collect();
     assert_eq!(
         names,
         [
@@ -578,18 +599,22 @@ fn a_row_is_the_filtered_data_in_its_order() {
     filtered.set("post_title", RowValue::Str(b"Again".to_vec()));
     assert_eq!(filtered.get("post_content"), None);
     assert_eq!(filtered.columns().len(), 21);
-    assert_eq!(filtered.columns().last().unwrap().0, "bogus");
-    assert_eq!(filtered.columns()[4].0, "post_title");
+    assert_eq!(filtered.columns().last().unwrap().0, b"bogus");
+    assert_eq!(filtered.columns()[4].0, b"post_title");
 
     let repo: Rc<dyn PostRepository> = Rc::new(Dummy);
-    assert_eq!(repo.insert(&filtered).unwrap(), None);
-    assert_eq!(repo.update(PostId(3), &PostRow::new()).unwrap(), None);
+    assert_eq!(repo.insert(&filtered).unwrap().written(), None);
+    assert_eq!(
+        repo.update(PostId(3), &PostRow::new()).unwrap().written(),
+        None
+    );
     assert_eq!(
         repo.update(
             PostId(3),
             &PostRow::new().with("comment_count", RowValue::Int(2))
         )
-        .unwrap(),
+        .unwrap()
+        .written(),
         Some(1)
     );
 }
@@ -610,11 +635,112 @@ fn a_column_takes_wpdbs_placeholder() {
     for name in ["post_title", "guid", "id", "bogus", ""] {
         assert_eq!(column_format(name), ColumnFormat::Str, "{name}");
     }
-    assert!(RowValue::Null.fits(ColumnFormat::Int));
-    assert!(RowValue::Null.fits(ColumnFormat::Str));
-    assert!(RowValue::Int(4).fits(ColumnFormat::Int));
-    assert!(!RowValue::Int(4).fits(ColumnFormat::Str));
-    assert!(!RowValue::Str(b"4".to_vec()).fits(ColumnFormat::Int));
+    // Keys are bytes, as PHP's are; a non-UTF-8 key names no `%d` field.
+    assert_eq!(column_format(b"ID".as_slice()), ColumnFormat::Int);
+    assert_eq!(column_format([0xFF_u8, b'I', b'D']), ColumnFormat::Str);
+    assert_eq!(INT_FIELDS.len(), 34);
+}
+
+#[test]
+fn a_row_value_keeps_its_php_type() {
+    // A non-string stays what it is, so `wpdb` formats it and skips its length check; an array goes through
+    // `prepare()`'s `_doing_it_wrong( 'Unsupported value type' )`.
+    let row = PostRow::new()
+        .with("post_title", RowValue::Int(5))
+        .with("post_excerpt", RowValue::Php(HookValue::Bool(true)))
+        .with(
+            "post_content",
+            RowValue::Php(HookValue::Float(-1.2345678901234567e308)),
+        )
+        .with("menu_order", RowValue::Str(b"\n5".to_vec()))
+        .with("guid", RowValue::Php(HookValue::Array(Vec::new())))
+        .with([0xFF_u8, b'k'], RowValue::Null);
+    assert_eq!(row.get("post_title"), Some(&RowValue::Int(5)));
+    assert_eq!(
+        row.get("post_excerpt"),
+        Some(&RowValue::Php(HookValue::Bool(true)))
+    );
+    assert_eq!(
+        row.get("guid"),
+        Some(&RowValue::Php(HookValue::Array(Vec::new())))
+    );
+    assert_eq!(row.get([0xFF_u8, b'k']), Some(&RowValue::Null));
+    assert_eq!(row.columns().last().unwrap().0, vec![0xFF, b'k']);
+}
+
+#[test]
+fn a_write_outcome_carries_last_error() {
+    let written: WriteOutcome<PostId> = WriteOutcome::Written(PostId(4));
+    assert_eq!(written.last_error(), None);
+    assert_eq!(written.written(), Some(PostId(4)));
+
+    let failed: WriteOutcome<u64> =
+        WriteOutcome::failed("Duplicate entry '100' for key 'wp_posts.PRIMARY'");
+    assert_eq!(
+        failed.last_error(),
+        Some("Duplicate entry '100' for key 'wp_posts.PRIMARY'")
+    );
+    assert_eq!(failed.clone().written(), None);
+
+    let repo: Rc<dyn PostRepository> = Rc::new(Dummy);
+    let unknown = repo
+        .insert(&PostRow::new().with("bogus", RowValue::Int(1)))
+        .unwrap();
+    assert!(unknown.last_error().is_some_and(|e| e.contains("bogus")));
+    let empty = repo.update(PostId(3), &PostRow::new()).unwrap();
+    assert!(empty.last_error().is_some());
+}
+
+struct Ports;
+
+impl Translator for Ports {
+    fn translate(&self, text: &str, _: Option<&str>) -> Result<String, PostError> {
+        if text == "throw" {
+            Err(HookError::message("gettext threw").into())
+        } else {
+            Ok(text.to_string())
+        }
+    }
+}
+
+impl Clock for Ports {
+    fn now_local(&self) -> Result<String, PostError> {
+        Err(HookError::message("pre_option_gmt_offset threw").into())
+    }
+    fn now_gmt(&self) -> String {
+        "2024-01-01 00:00:00".to_string()
+    }
+    fn date_from_gmt(&self, gmt: &[u8]) -> Result<Vec<u8>, PostError> {
+        Ok(gmt.to_vec())
+    }
+    fn gmt_from_date(&self, local: &[u8]) -> Result<Vec<u8>, PostError> {
+        Ok(local.to_vec())
+    }
+    fn timestamp(&self, _: &[u8]) -> Option<i64> {
+        Some(0)
+    }
+}
+
+impl RewriteContext for Ports {
+    fn rewrite_applies(&self) -> Result<bool, PostError> {
+        Err(HookError::message("option_permalink_structure threw").into())
+    }
+}
+
+#[test]
+fn every_port_that_runs_a_callback_can_throw() {
+    let translator: Rc<dyn Translator> = Rc::new(Ports);
+    let clock: Rc<dyn Clock> = Rc::new(Ports);
+    let rewrite: Rc<dyn RewriteContext> = Rc::new(Ports);
+    assert_eq!(translator.translate("Posts", None).unwrap(), "Posts");
+    assert!(matches!(
+        translator.translate("throw", Some("ctx")),
+        Err(PostError::Hook(_))
+    ));
+    assert!(matches!(clock.now_local(), Err(PostError::Hook(_))));
+    assert_eq!(clock.now_gmt(), "2024-01-01 00:00:00");
+    assert_eq!(clock.gmt_from_date(b"x").unwrap(), b"x".to_vec());
+    assert!(matches!(rewrite.rewrite_applies(), Err(PostError::Hook(_))));
 }
 
 struct ThrowingSlugs;

@@ -23,8 +23,9 @@ Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platf
   `PostObject` and `PostArg`, which carry a caller's PHP post object so hooks share it.
 - `PostRepository`: one method per `wp_posts` statement `post.php` sends, reads and writes, each documented with
   WordPress 7.2-RC2's text (as `wpdb` builds it for `$wpdb->insert`, `update` and `delete`), and `PageRow`. Inserts
-  and updates take a `PostRow`, the `wp_insert_post_data`-filtered `$data` in its order, with `RowValue` and
-  `column_format` (wpdb's `field_types`).
+  and updates take a `PostRow`, the `wp_insert_post_data`-filtered `$data` in its order (byte keys, and `RowValue`s
+  that keep each PHP value's type), with `column_format` (wpdb's `field_types`), and answer a `WriteOutcome` that
+  carries `$wpdb->last_error` when the write fails.
 - Ports to code that is not ported yet: `Users`, `Taxonomy`, `Comments`, `Rewrite`, `Uploads`, `Theme`, `Revisions`
   and `Charset`. Options and cron go through their own contracts.
 - `CurrentPost` (the global `$post`) and `PostQuery` (`WP_Query`, opaque until the query seam is ported).
