@@ -2,7 +2,8 @@
 
 use crate::{
     CommentStatus, LastPostField, MimeFilter, MimeType, PageRow, PingStatus, Post, PostDate,
-    PostDateTime, PostId, PostParent, PostRepository, PostStatusName, PostTypeName, Slug, Timezone,
+    PostDateTime, PostError, PostId, PostParent, PostRepository, PostRow, PostStatusName,
+    PostTypeName, RowValue, Slug, Timezone,
 };
 
 fn ensure(check: &str, ok: bool, detail: impl FnOnce() -> String) {
@@ -15,6 +16,11 @@ fn slug(s: &str) -> Slug {
 
 fn post_type(s: &str) -> PostTypeName {
     PostTypeName::new(s)
+}
+
+/// The row `compact()` builds for `post`, with `$data['ID']` set to `id`.
+fn with_id(post: &Post, id: i64) -> PostRow {
+    PostRow::from_post(post).with("ID", RowValue::Int(id))
 }
 
 /// An id as PHP's `(int)` holds it.
@@ -50,7 +56,7 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
 /// here depends on how the engine stores a value out of range or `NULL`, so every engine runs it.
 pub fn read_suite(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post, None)
+        repo.insert(&PostRow::from_post(post))
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -67,15 +73,15 @@ pub fn read_suite(repo: &dyn PostRepository) {
     );
 
     // insert_with_id_is_honoured: the auto-increment continues past an explicit ID, as MySQL's does; `post.id` is
-    // not read.
+    // not in the row.
     let explicit = repo
-        .insert(
+        .insert(&with_id(
             &Post {
                 id: PostId(7_777),
                 ..named("imported", "post", 0)
             },
-            Some(100),
-        )
+            100,
+        ))
         .expect("insert")
         .expect("the insert returns an id");
     let next = insert(&named("after-import", "post", 0));
@@ -87,7 +93,7 @@ pub fn read_suite(repo: &dyn PostRepository) {
 
     // insert_taken_id_is_none
     let taken = repo
-        .insert(&named("duplicate", "post", 0), Some(100))
+        .insert(&with_id(&named("duplicate", "post", 0), 100))
         .expect("insert");
     let kept = find(PostId(100)).map(|p| p.name);
     ensure(
@@ -138,16 +144,78 @@ pub fn read_suite(repo: &dyn PostRepository) {
         || format!("{read:?}"),
     );
 
-    // insert_does_not_write_comment_count
+    // insert_writes_comment_count_only_when_the_row_has_it: `compact()` leaves it out, a callback may add it.
     let counted = insert(&Post {
         comment_count: 5,
         ..named("counted", "post", 0)
     });
     let count = find(counted).map(|p| p.comment_count);
+    let added = repo
+        .insert(
+            &PostRow::from_post(&named("counted-added", "post", 0))
+                .with("comment_count", RowValue::Int(5)),
+        )
+        .expect("insert")
+        .expect("the insert returns an id");
+    let added_count = find(added).map(|p| p.comment_count);
     ensure(
-        "insert_does_not_write_comment_count",
-        count == Some(0),
-        || format!("{count:?}"),
+        "insert_writes_comment_count_only_when_the_row_has_it",
+        count == Some(0) && added_count == Some(5),
+        || format!("{count:?} {added_count:?}"),
+    );
+
+    // insert_leaves_a_dropped_column_to_its_default: a callback that unsets `post_status` and `post_content`.
+    let mut dropped = PostRow::from_post(&Post {
+        status: PostStatusName::new("draft"),
+        content: b"gone".to_vec(),
+        ..named("dropped", "post", 0)
+    });
+    dropped.remove("post_status");
+    dropped.remove("post_content");
+    let dropped_id = repo
+        .insert(&dropped)
+        .expect("insert")
+        .expect("the insert returns an id");
+    let defaulted = find(dropped_id);
+    ensure(
+        "insert_leaves_a_dropped_column_to_its_default",
+        defaulted.as_ref().is_some_and(|p| {
+            p.status == PostStatusName::new("publish")
+                && p.content.is_empty()
+                && p.name == slug("dropped")
+        }),
+        || format!("{defaulted:?}"),
+    );
+
+    // insert_of_an_added_unknown_column_or_an_empty_row_is_none: MySQL rejects both, so `$wpdb->insert` is false.
+    let unknown = repo
+        .insert(
+            &PostRow::from_post(&named("unknown-column", "post", 0))
+                .with("bogus", RowValue::Str(b"x".to_vec())),
+        )
+        .expect("insert");
+    let unknown_owner = repo
+        .flat_slug_owner(&slug("unknown-column"), &post_type("post"), PostId(0))
+        .expect("flat_slug_owner");
+    let empty = repo.insert(&PostRow::new()).expect("insert");
+    ensure(
+        "insert_of_an_added_unknown_column_or_an_empty_row_is_none",
+        unknown.is_none() && unknown_owner.is_none() && empty.is_none(),
+        || format!("{unknown:?} {unknown_owner:?} {empty:?}"),
+    );
+
+    // insert_of_a_value_that_does_not_fit_its_column_is_an_error: a text value under `%d`, sent nowhere.
+    let misfit = repo.insert(
+        &PostRow::from_post(&named("misfit", "post", 0))
+            .with("menu_order", RowValue::Str(b"4".to_vec())),
+    );
+    let misfit_owner = repo
+        .flat_slug_owner(&slug("misfit"), &post_type("post"), PostId(0))
+        .expect("flat_slug_owner");
+    ensure(
+        "insert_of_a_value_that_does_not_fit_its_column_is_an_error",
+        matches!(misfit, Err(PostError::Db(_))) && misfit_owner.is_none(),
+        || format!("{misfit:?} {misfit_owner:?}"),
     );
 
     // find_missing_is_none
@@ -294,7 +362,7 @@ pub fn binary_safe_suite(repo: &dyn PostRepository) {
         ..Post::default()
     };
     let id = repo
-        .insert(&post, None)
+        .insert(&PostRow::from_post(&post))
         .expect("insert")
         .expect("the insert returns an id");
     let read = repo.find(id).expect("find");
@@ -362,7 +430,7 @@ fn grown(before: &[(Vec<u8>, u64)], after: &[(Vec<u8>, u64)]) -> Vec<(String, u6
 
 fn read_statements(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post, None)
+        repo.insert(&PostRow::from_post(post))
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -640,7 +708,7 @@ fn read_statements(repo: &dyn PostRepository) {
 
 fn last_post_time(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post, None)
+        repo.insert(&PostRow::from_post(post))
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -752,7 +820,7 @@ fn last_post_time(repo: &dyn PostRepository) {
 
 fn write_statements(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post, None)
+        repo.insert(&PostRow::from_post(post))
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -802,14 +870,14 @@ fn write_statements(repo: &dyn PostRepository) {
     // insert_with_a_zero_or_negative_id_takes_the_next_id: `'abc'` casts to 0 and `-5` stays -5; both are sent as
     // the `ID` and MySQL gives the row the next auto-increment id (the unsigned column clamps -5 to 0).
     let auto = repo
-        .insert(&named("wr-auto", "wr-post", 0), None)
+        .insert(&PostRow::from_post(&named("wr-auto", "wr-post", 0)))
         .expect("insert")
         .expect("the insert returns an id");
     let at_zero = repo
-        .insert(&named("wr-import-zero", "wr-post", 0), Some(0))
+        .insert(&with_id(&named("wr-import-zero", "wr-post", 0), 0))
         .expect("insert");
     let at_negative = repo
-        .insert(&named("wr-import-negative", "wr-post", 0), Some(-5))
+        .insert(&with_id(&named("wr-import-negative", "wr-post", 0), -5))
         .expect("insert");
     let names = |id: Option<PostId>| {
         id.and_then(|id| repo.find(id).expect("find"))
@@ -826,13 +894,10 @@ fn write_statements(repo: &dyn PostRepository) {
 
     // insert_null_parent_writes_no_row: `NULL` in the `NOT NULL` column is error 1048, so `$wpdb->insert` is false.
     let null_parent = repo
-        .insert(
-            &Post {
-                parent: PostParent::Null,
-                ..named("wr-null-parent", "wr-page", 0)
-            },
-            None,
-        )
+        .insert(&PostRow::from_post(&Post {
+            parent: PostParent::Null,
+            ..named("wr-null-parent", "wr-page", 0)
+        }))
         .expect("insert");
     let owner_of_null = repo
         .flat_slug_owner(&slug("wr-null-parent"), &post_type("wr-page"), PostId(0))
@@ -886,15 +951,11 @@ fn write_statements(repo: &dyn PostRepository) {
         mime_type: MimeType::from("text/plain"),
         comment_count: 7,
     };
-    let first = repo.update(&changed).expect("update");
+    let changed_row = PostRow::from_post(&changed);
+    let first = repo.update(id, &changed_row).expect("update");
     let read = find(id);
-    let again = repo.update(&changed).expect("update");
-    let nobody = repo
-        .update(&Post {
-            id: missing,
-            ..changed.clone()
-        })
-        .expect("update");
+    let again = repo.update(id, &changed_row).expect("update");
+    let nobody = repo.update(missing, &changed_row).expect("update");
     ensure(
         "update_writes_every_column_but_id_and_comment_count",
         first == Some(1)
@@ -910,10 +971,13 @@ fn write_statements(repo: &dyn PostRepository) {
     );
 
     // update_negative_parent_is_stored_as_zero
-    repo.update(&Post {
-        parent: PostParent::Int(-7),
-        ..changed.clone()
-    })
+    repo.update(
+        id,
+        &PostRow::from_post(&Post {
+            parent: PostParent::Int(-7),
+            ..changed.clone()
+        }),
+    )
     .expect("update");
     let stored = find(id).parent;
     ensure(
@@ -923,22 +987,86 @@ fn write_statements(repo: &dyn PostRepository) {
     );
 
     // update_null_parent_is_stored_as_zero: an `UPDATE` of `NULL` is a warning outside strict mode, and stores 0.
-    repo.update(&Post {
-        parent: PostParent::Int(5),
-        ..changed.clone()
-    })
+    repo.update(
+        id,
+        &PostRow::from_post(&Post {
+            parent: PostParent::Int(5),
+            ..changed.clone()
+        }),
+    )
     .expect("update");
     let nulled = repo
-        .update(&Post {
-            parent: PostParent::Null,
-            ..changed.clone()
-        })
+        .update(
+            id,
+            &PostRow::from_post(&Post {
+                parent: PostParent::Null,
+                ..changed.clone()
+            }),
+        )
         .expect("update");
     let stored = find(id).parent;
     ensure(
         "update_null_parent_is_stored_as_zero",
         nulled == Some(1) && stored == PostParent::NONE,
         || format!("{nulled:?} {stored:?}"),
+    );
+
+    // update_keeps_a_dropped_column: a callback that unsets `post_content` leaves the stored content alone.
+    let before = find(id);
+    let mut dropped = PostRow::from_post(&Post {
+        content: b"overwritten".to_vec(),
+        title: b"Retitled".to_vec(),
+        ..before.clone()
+    });
+    dropped.remove("post_content");
+    let retitled = repo.update(id, &dropped).expect("update");
+    let after = find(id);
+    ensure(
+        "update_keeps_a_dropped_column",
+        retitled == Some(1)
+            && after.content == before.content
+            && after.title == b"Retitled".to_vec(),
+        || format!("{retitled:?} {after:?}"),
+    );
+
+    // update_writes_an_added_column: a callback that adds `comment_count` writes it.
+    let counted = repo
+        .update(id, &PostRow::new().with("comment_count", RowValue::Int(3)))
+        .expect("update");
+    let count = find(id).comment_count;
+    ensure(
+        "update_writes_an_added_column",
+        counted == Some(1) && count == 3,
+        || format!("{counted:?} {count}"),
+    );
+
+    // update_of_an_unknown_column_or_an_empty_row_is_none: MySQL rejects both and changes nothing.
+    let before = find(id);
+    let unknown = repo
+        .update(
+            id,
+            &PostRow::new()
+                .with("post_title", RowValue::Str(b"Not written".to_vec()))
+                .with("bogus", RowValue::Str(b"1".to_vec())),
+        )
+        .expect("update");
+    let empty = repo.update(id, &PostRow::new()).expect("update");
+    let after = find(id);
+    ensure(
+        "update_of_an_unknown_column_or_an_empty_row_is_none",
+        unknown.is_none() && empty.is_none() && after == before,
+        || format!("{unknown:?} {empty:?} {after:?}"),
+    );
+
+    // update_null_in_a_text_column_stores_its_default: `NULL` in an `UPDATE` is the implicit default, `''`.
+    let nulled = repo
+        .update(id, &PostRow::new().with("post_excerpt", RowValue::Null))
+        .expect("update");
+    let excerpt = find(id).excerpt;
+    ensure(
+        "update_null_in_a_text_column_stores_its_default",
+        nulled == Some(1) && excerpt.is_empty(),
+        || format!("{nulled:?} {excerpt:?}"),
     );
 
     column_updates(repo);
@@ -954,7 +1082,7 @@ fn column_updates(repo: &dyn PostRepository) {
         ..named("wr-column", "wr-col", 0)
     };
     let id = repo
-        .insert(&base, None)
+        .insert(&PostRow::from_post(&base))
         .expect("insert")
         .expect("the insert returns an id");
     let missing = PostId(9_996);
@@ -1037,7 +1165,7 @@ fn column_updates(repo: &dyn PostRepository) {
 /// `wp_delete_post()`'s statements and `wp_delete_auto_drafts()`' one.
 fn deleting(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post, None)
+        repo.insert(&PostRow::from_post(post))
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -1181,7 +1309,7 @@ fn deleting(repo: &dyn PostRepository) {
 ///   post's GMT date is zero.
 pub fn mysql_suite(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post, None)
+        repo.insert(&PostRow::from_post(post))
             .expect("insert")
             .expect("the insert returns an id")
     };

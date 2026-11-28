@@ -7,6 +7,7 @@ use speedyspec_php_serialize::PhpValue;
 use speedyspec_wp_hooks_contracts::HookError;
 use speedyspec_wp_hooks_contracts::HookValue;
 use speedyspec_wp_object_cache_contracts::ObjectCacheError;
+use speedyspec_wp_posts_contracts::{BadSlugs, ColumnFormat, PostRow, RowValue, column_format};
 use speedyspec_wp_posts_contracts::{
     CurrentPost, Filter, LastPostField, MimeFilter, MimeType, PageRow, Post, PostDateTime,
     PostError, PostId, PostParent, PostQuery, PostRef, PostRepository, PostStatusName, PostTypeArg,
@@ -100,14 +101,18 @@ impl PostRepository for Dummy {
     fn find(&self, _: PostId) -> Result<Option<Post>, PostError> {
         Ok(None)
     }
-    fn insert(&self, post: &Post, import_id: Option<i64>) -> Result<Option<PostId>, PostError> {
-        // As MySQL does: an explicit id above 0 is kept, 0 and below take the next id (50 here), and a null parent
-        // is rejected.
-        if post.parent == PostParent::Null {
+    fn insert(&self, row: &PostRow) -> Result<Option<PostId>, PostError> {
+        // As MySQL does: an explicit `ID` above 0 is kept, 0 and below take the next id (50 here), and `NULL` or an
+        // unknown column is rejected.
+        if row
+            .columns()
+            .iter()
+            .any(|(name, value)| *value == RowValue::Null || name == "bogus")
+        {
             return Ok(None);
         }
-        Ok(Some(match import_id {
-            Some(id) if id > 0 => PostId(id as u64),
+        Ok(Some(match row.get("ID") {
+            Some(RowValue::Int(id)) if *id > 0 => PostId(*id as u64),
             _ => PostId(50),
         }))
     }
@@ -172,8 +177,8 @@ impl PostRepository for Dummy {
     fn available_mime_types(&self, _: &PostTypeName) -> Result<Vec<MimeType>, PostError> {
         Ok(Vec::new())
     }
-    fn update(&self, _: &Post) -> Result<Option<u64>, PostError> {
-        Ok(Some(1))
+    fn update(&self, _: PostId, row: &PostRow) -> Result<Option<u64>, PostError> {
+        Ok((!row.is_empty()).then_some(1))
     }
     fn update_name(&self, _: PostId, _: &Slug) -> Result<Option<u64>, PostError> {
         Ok(Some(1))
@@ -379,11 +384,14 @@ fn an_import_id_is_present_or_absent_and_signed() {
     // `wp_insert_post()` casts a non-empty `import_id` with `(int)`: `'abc'` is `Some(0)` and `-5` is `Some(-5)`; both
     // are checked (`WHERE ID = 0`, `WHERE ID = -5`) and sent as the `ID`. An empty one is `None`.
     let repo: Rc<dyn PostRepository> = Rc::new(Dummy);
-    let post = Post::default();
-    assert_eq!(repo.insert(&post, None).unwrap(), Some(PostId(50)));
-    assert_eq!(repo.insert(&post, Some(0)).unwrap(), Some(PostId(50)));
-    assert_eq!(repo.insert(&post, Some(-5)).unwrap(), Some(PostId(50)));
-    assert_eq!(repo.insert(&post, Some(100)).unwrap(), Some(PostId(100)));
+    let row = PostRow::from_post(&Post::default());
+    let with_id = |id: i64| row.clone().with("ID", RowValue::Int(id));
+    assert_eq!(repo.insert(&row).unwrap(), Some(PostId(50)));
+    assert_eq!(repo.insert(&with_id(0)).unwrap(), Some(PostId(50)));
+    assert_eq!(repo.insert(&with_id(-5)).unwrap(), Some(PostId(50)));
+    assert_eq!(repo.insert(&with_id(100)).unwrap(), Some(PostId(100)));
+    // `ID` is appended after `compact()`'s columns.
+    assert_eq!(with_id(100).columns().last().unwrap().0, "ID");
     assert!(!repo.import_id_taken(0).unwrap());
     assert!(!repo.import_id_taken(-5).unwrap());
     // `set_post_type()`'s raw id reaches the statement: `WHERE `ID` = -3` changes nothing.
@@ -402,7 +410,9 @@ fn a_null_parent_is_representable() {
         parent: PostParent::Null,
         ..Post::default()
     };
-    assert_eq!(repo.insert(&post, None).unwrap(), None);
+    let row = PostRow::from_post(&post);
+    assert_eq!(row.get("post_parent"), Some(&RowValue::Null));
+    assert_eq!(repo.insert(&row).unwrap(), None);
     assert_eq!(post.parent.prepared(), 0);
     assert!(
         repo.hierarchical_slug_owner(
@@ -521,4 +531,118 @@ fn the_read_and_write_suites_run_apart() {
     };
     let suites: [fn(&dyn PostRepository); 3] = [read_suite, write_suite, post_repository_suite];
     assert_eq!(suites.len(), 3);
+}
+
+#[test]
+fn a_row_is_the_filtered_data_in_its_order() {
+    // `compact()`'s 21 columns, in its order, with no `ID` and no `comment_count`.
+    let row = PostRow::from_post(&Post::default());
+    let names: Vec<&str> = row.columns().iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "post_author",
+            "post_date",
+            "post_date_gmt",
+            "post_content",
+            "post_content_filtered",
+            "post_title",
+            "post_excerpt",
+            "post_status",
+            "post_type",
+            "comment_status",
+            "ping_status",
+            "post_password",
+            "post_name",
+            "to_ping",
+            "pinged",
+            "post_modified",
+            "post_modified_gmt",
+            "post_parent",
+            "menu_order",
+            "post_mime_type",
+            "guid",
+        ]
+    );
+    assert_eq!(row.get("post_author"), Some(&RowValue::Int(0)));
+    assert_eq!(
+        row.get("post_status"),
+        Some(&RowValue::Str(b"publish".to_vec()))
+    );
+
+    // A callback drops a column and adds one: the dropped one is gone, the added one goes last; setting a key again
+    // keeps its place, as PHP's assignment does.
+    let mut filtered = row.clone();
+    filtered.remove("post_content");
+    filtered.set("bogus", RowValue::Str(b"x".to_vec()));
+    filtered.set("post_title", RowValue::Str(b"Again".to_vec()));
+    assert_eq!(filtered.get("post_content"), None);
+    assert_eq!(filtered.columns().len(), 21);
+    assert_eq!(filtered.columns().last().unwrap().0, "bogus");
+    assert_eq!(filtered.columns()[4].0, "post_title");
+
+    let repo: Rc<dyn PostRepository> = Rc::new(Dummy);
+    assert_eq!(repo.insert(&filtered).unwrap(), None);
+    assert_eq!(repo.update(PostId(3), &PostRow::new()).unwrap(), None);
+    assert_eq!(
+        repo.update(
+            PostId(3),
+            &PostRow::new().with("comment_count", RowValue::Int(2))
+        )
+        .unwrap(),
+        Some(1)
+    );
+}
+
+#[test]
+fn a_column_takes_wpdbs_placeholder() {
+    for name in [
+        "post_author",
+        "post_parent",
+        "menu_order",
+        "ID",
+        "comment_count",
+        "post_id",
+    ] {
+        assert_eq!(column_format(name), ColumnFormat::Int, "{name}");
+    }
+    // Exact names only, as `isset( $wpdb->field_types[ $field ] )`.
+    for name in ["post_title", "guid", "id", "bogus", ""] {
+        assert_eq!(column_format(name), ColumnFormat::Str, "{name}");
+    }
+    assert!(RowValue::Null.fits(ColumnFormat::Int));
+    assert!(RowValue::Null.fits(ColumnFormat::Str));
+    assert!(RowValue::Int(4).fits(ColumnFormat::Int));
+    assert!(!RowValue::Int(4).fits(ColumnFormat::Str));
+    assert!(!RowValue::Str(b"4".to_vec()).fits(ColumnFormat::Int));
+}
+
+struct ThrowingSlugs;
+
+impl BadSlugs for ThrowingSlugs {
+    fn bad_attachment_slug(&self, _: &[u8]) -> Result<bool, PostError> {
+        Ok(false)
+    }
+    fn bad_hierarchical_slug(&self, _: &[u8], _: &str, _: PostParent) -> Result<bool, PostError> {
+        Ok(true)
+    }
+    fn bad_flat_slug(&self, _: &[u8], _: &str) -> Result<bool, PostError> {
+        Err(HookError::message("thrown").into())
+    }
+}
+
+#[test]
+fn a_bad_slug_check_can_throw() {
+    // A `wp_unique_post_slug_is_bad_*` callback's exception stops the use case before the slug check.
+    let slugs: Rc<dyn BadSlugs> = Rc::new(ThrowingSlugs);
+    assert!(!slugs.bad_attachment_slug(b"a").unwrap());
+    assert!(
+        slugs
+            .bad_hierarchical_slug(b"a", "page", PostParent::Null)
+            .unwrap()
+    );
+    assert!(matches!(
+        slugs.bad_flat_slug(b"a", "post"),
+        Err(PostError::Hook(_))
+    ));
 }

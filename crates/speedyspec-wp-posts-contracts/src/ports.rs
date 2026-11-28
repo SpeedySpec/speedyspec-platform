@@ -17,7 +17,7 @@ use speedyspec_php_serialize::PhpValue;
 
 use crate::{
     LastPostField, MimeFilter, MimeType, Post, PostDateTime, PostError, PostId, PostParent,
-    PostStatusName, PostStatusObject, PostType, PostTypeName, Slug, Timezone,
+    PostRow, PostStatusName, PostStatusObject, PostType, PostTypeName, Slug, Timezone,
 };
 
 /// One row `get_page_by_path()` selects: `ID, post_name, post_parent, post_type`.
@@ -39,28 +39,30 @@ pub trait PostRepository {
     fn engine(&self) -> String;
     /// `WP_Post::get_instance()`: `SELECT * FROM {posts} WHERE ID = %d LIMIT 1`.
     fn find(&self, id: PostId) -> Result<Option<Post>, PostError>;
-    /// `wp_insert_post()`'s `$wpdb->insert( $wpdb->posts, $data )` (post.php 5268): the 21 columns it writes, plus
-    /// `ID` when `import_id` is `Some`; `post.id` is not read, and `comment_count` is not written (the column default,
-    /// 0). The new id (`$wpdb->insert_id`); `None` when `$wpdb->insert` returns false (a duplicate ID, or a
-    /// [`PostParent::Null`] parent, which MySQL rejects with error 1048).
+    /// `wp_insert_post()`'s `$wpdb->insert( $wpdb->posts, $data )` (post.php 5268): `row` is the filtered `$data`
+    /// ([`PostRow`]), its keys the statement's columns in order. The new id (`$wpdb->insert_id`); `None` when
+    /// `$wpdb->insert` returns false: a duplicate `ID`, an unknown column, an empty row, or `NULL` in a column, which
+    /// MySQL rejects in an `INSERT` even outside strict mode (error 1048).
     ///
-    /// `wpdb::_insert_replace_helper()` builds it, `%d` for the columns in `$wpdb->field_types` (`post_author`,
-    /// `post_parent`, `menu_order`, `ID`) and `%s` for the rest, then `prepare()`s it:
+    /// `wpdb::_insert_replace_helper()` builds it: each key in backticks, joined with `` `, ` ``; each value's
+    /// placeholder by [`crate::column_format`] (`%d` or `%s`), or `NULL` for [`RowValue::Null`](crate::RowValue::Null), joined with `, `; then
+    /// `prepare()`s it. With the row [`PostRow::from_post`] builds, unchanged by any callback:
     ///
     /// ```text
     /// INSERT INTO `{posts}` (`post_author`, `post_date`, `post_date_gmt`, `post_content`, `post_content_filtered`, `post_title`, `post_excerpt`, `post_status`, `post_type`, `comment_status`, `ping_status`, `post_password`, `post_name`, `to_ping`, `pinged`, `post_modified`, `post_modified_gmt`, `post_parent`, `menu_order`, `post_mime_type`, `guid`) VALUES (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %d, %s, %s)
     /// ```
     ///
-    /// With an `ID`, `` , `ID` `` follows `` `guid` `` and `, %d` the last `%s`, since `wp_insert_post()` adds the key
-    /// after `compact()`. A negative [`Post::parent`] goes into the statement as it is (`-5`) and is stored as `0`
-    /// ([`PostParent::stored`]); a [`PostParent::Null`] one is written `NULL` in place of its `%d`.
+    /// A column the row leaves out takes the engine's default (MySQL: `0`, `''`, `0000-00-00 00:00:00`, and the
+    /// schema's `publish`, `open`, `open` and `post` for `post_status`, `comment_status`, `ping_status` and
+    /// `post_type`; the same as [`Post::default`]). A value the column cannot hold is stored as MySQL converts it under
+    /// WordPress's `sql_mode`: a negative `post_parent` or `post_author` as `0`, a negative or zero `ID` as the next
+    /// auto-increment id ([`PostParent::stored`]).
     ///
-    /// `import_id` is `$data['ID']`: `wp_insert_post()` casts a non-empty `import_id` with `(int)` (so `'abc'` is
-    /// `Some(0)` and `-5` is `Some(-5)`; `0`, `'0'` and `''` are empty, `None`), asks
-    /// [`PostRepository::import_id_taken`] with the cast value, and passes it here when no row has it. `Some(0)` and
-    /// a negative id are sent as they are (`` `ID` `` with `, 0` or `, -5`); MySQL stores both as the next
-    /// auto-increment id, since the unsigned column clamps `-5` to `0` and `0` asks for the next id.
-    fn insert(&self, post: &Post, import_id: Option<i64>) -> Result<Option<PostId>, PostError>;
+    /// `ID` is in the row when `wp_insert_post()` set `$data['ID']`: it casts a non-empty `import_id` with `(int)` (so
+    /// `'abc'` is `0` and `-5` is `-5`; `0`, `'0'` and `''` are empty and set nothing), asks
+    /// [`PostRepository::import_id_taken`] with the cast value, and sets `ID` when no row has it. A row that holds
+    /// `comment_count` writes it.
+    fn insert(&self, row: &PostRow) -> Result<Option<PostId>, PostError>;
     /// `wp_unique_post_slug()`, attachments:
     /// `SELECT post_name FROM {posts} WHERE post_name = %s AND ID != %d LIMIT 1`.
     fn attachment_slug_owner(&self, slug: &Slug, except: PostId)
@@ -227,21 +229,25 @@ pub trait PostRepository {
     /// Each non-empty mime type once, in the engine's order.
     fn available_mime_types(&self, post_type: &PostTypeName) -> Result<Vec<MimeType>, PostError>;
 
-    /// `wp_insert_post()`'s `$wpdb->update( $wpdb->posts, $data, $where )` (post.php 5236): the same 21 columns as
-    /// [`PostRepository::insert`], in its order, where `ID` is `post.id`. `ID` and `comment_count` are not written.
+    /// `wp_insert_post()`'s `$wpdb->update( $wpdb->posts, $data, $where )` (post.php 5236): `row` is the filtered
+    /// `$data` ([`PostRow`]), its keys the columns set, in order, where `ID` is `id`. A column the row leaves out keeps
+    /// its stored value.
+    ///
+    /// `wpdb::update()` builds it: `` `column` = `` and the column's placeholder ([`crate::column_format`]), or
+    /// `` `column` = NULL `` for [`RowValue::Null`](crate::RowValue::Null), joined with `, `, then ``WHERE `ID` = %d``, and `prepare()`s it.
+    /// With the row [`PostRow::from_post`] builds, unchanged by any callback:
     ///
     /// ```text
     /// UPDATE `{posts}` SET `post_author` = %d, `post_date` = %s, `post_date_gmt` = %s, `post_content` = %s, `post_content_filtered` = %s, `post_title` = %s, `post_excerpt` = %s, `post_status` = %s, `post_type` = %s, `comment_status` = %s, `ping_status` = %s, `post_password` = %s, `post_name` = %s, `to_ping` = %s, `pinged` = %s, `post_modified` = %s, `post_modified_gmt` = %s, `post_parent` = %d, `menu_order` = %d, `post_mime_type` = %s, `guid` = %s WHERE `ID` = %d
     /// ```
     ///
-    /// `wpdb::update()` builds it (`` `column` = format `` joined with `, `, the conditions with ` AND `) and
-    /// `prepare()`s it. A negative [`Post::parent`] is sent as it is and stored as `0`; a [`PostParent::Null`] one is
-    /// written `` `post_parent` = NULL ``, which MySQL stores as `0` with a warning (an `UPDATE`, unlike an `INSERT`,
-    /// is not rejected outside strict mode).
+    /// A negative `post_parent` is stored as `0`, and so is `NULL` in any column, which an `UPDATE` stores as the
+    /// column's implicit default (`0`, `''`, the zero date) with a warning outside strict mode, unlike an `INSERT`. An
+    /// empty row (``UPDATE `{posts}` SET  WHERE `ID` = %d``, two spaces) or an unknown column makes MySQL reject it.
     ///
     /// The rows changed, as MySQL counts them: an update that matches a row but changes nothing is `Some(0)`, and so
     /// is one that matches none. `None` where `$wpdb->update` returns false.
-    fn update(&self, post: &Post) -> Result<Option<u64>, PostError>;
+    fn update(&self, id: PostId, row: &PostRow) -> Result<Option<u64>, PostError>;
     /// `$wpdb->update( $wpdb->posts, array( 'post_name' => $name ), array( 'ID' => $id ) )`:
     /// ``UPDATE `{posts}` SET `post_name` = %s WHERE `ID` = %d``.
     ///
@@ -362,13 +368,21 @@ pub trait SlugTruncation {
 }
 
 /// The `wp_unique_post_slug_is_bad_{attachment,hierarchical,flat}_slug` filters (Strategy), bound in phase 4.
+///
+/// A callback may throw: the method answers [`PostError::Hook`], and the use case stops before it checks the slug,
+/// as WordPress's exception would.
 pub trait BadSlugs {
     /// `wp_unique_post_slug_is_bad_attachment_slug`.
-    fn bad_attachment_slug(&self, slug: &[u8]) -> bool;
+    fn bad_attachment_slug(&self, slug: &[u8]) -> Result<bool, PostError>;
     /// `wp_unique_post_slug_is_bad_hierarchical_slug`.
-    fn bad_hierarchical_slug(&self, slug: &[u8], post_type: &str, parent: PostParent) -> bool;
+    fn bad_hierarchical_slug(
+        &self,
+        slug: &[u8],
+        post_type: &str,
+        parent: PostParent,
+    ) -> Result<bool, PostError>;
     /// `wp_unique_post_slug_is_bad_flat_slug`.
-    fn bad_flat_slug(&self, slug: &[u8], post_type: &str) -> bool;
+    fn bad_flat_slug(&self, slug: &[u8], post_type: &str) -> Result<bool, PostError>;
 }
 
 /// `__()` and `_x()` in the `default` domain (WordPress's English when nothing translates).

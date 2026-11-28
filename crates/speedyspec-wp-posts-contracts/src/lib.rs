@@ -11,6 +11,7 @@ mod entity;
 mod error;
 mod ports;
 mod read;
+mod row;
 mod unported;
 mod values;
 mod write;
@@ -22,6 +23,7 @@ pub use ports::{
     PostTypeSupports, PostTypes, RewriteContext, SlugTruncation, TitleSanitizer, Translator,
 };
 pub use read::{Filter, LastPostField, MimeFilter, PostRef, PostTypeArg, Posts, Timezone};
+pub use row::{ColumnFormat, INT_FIELDS, PostRow, RowValue, column_format};
 pub use unported::{Charset, Comments, Revisions, Rewrite, Taxonomy, Theme, Uploads, Users};
 pub use values::{
     CommentStatus, MimeType, PingStatus, PostDate, PostDateTime, PostId, PostParent,
