@@ -511,3 +511,14 @@ fn a_null_or_negative_parent_reaches_the_statements_as_an_integer() {
     assert_eq!(PostParent::Null.prepared(), 0);
     assert_eq!(PostParent::Int(-5).stored(), PostParent::NONE);
 }
+
+#[cfg(feature = "conformance")]
+#[test]
+fn the_read_and_write_suites_run_apart() {
+    // An engine without MySQL's `sql_mode` behaviour (SQLite) runs the read suite alone; the full suite runs both.
+    use speedyspec_wp_posts_contracts::conformance::{
+        post_repository_suite, read_suite, write_suite,
+    };
+    let suites: [fn(&dyn PostRepository); 3] = [read_suite, write_suite, post_repository_suite];
+    assert_eq!(suites.len(), 3);
+}

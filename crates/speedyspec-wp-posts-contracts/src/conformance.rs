@@ -32,13 +32,23 @@ fn named(name: &str, kind: &str, parent: i64) -> Post {
     }
 }
 
-/// Runs every check against `repo`, which must start with an empty table and a fresh auto-increment
+/// Runs every check against `repo`: [`read_suite`], then [`write_suite`] on the same table. `repo` must start with an
+/// empty table and a fresh auto-increment. Panics naming the failing check.
+///
+/// It is the suite for a repository that behaves as MySQL does under WordPress's `sql_mode`. An engine that does not
+/// (SQLite stores a `-5` parent as `-5` and rejects a `NULL` one in an `UPDATE`) runs [`read_suite`] alone.
+pub fn post_repository_suite(repo: &dyn PostRepository) {
+    read_suite(repo);
+    write_suite(repo);
+}
+
+/// The insert and read statements' checks. `repo` must start with an empty table and a fresh auto-increment
 /// (`insert_with_id_is_honoured` expects 101 after an explicit 100). Panics naming the failing check.
 ///
-/// The read statements' checks run next, on post types of their own (`rd-*`); the ones that read every page or
-/// every attachment compare what the table held before and after their inserts. The write statements' checks run
-/// last, on post types of their own (`wr-*`); the auto-draft check compares the ids before and after its inserts.
-pub fn post_repository_suite(repo: &dyn PostRepository) {
+/// The insert checks run first; the read statements' checks run next, on post types of their own (`rd-*`), and the
+/// ones that read every page or every attachment compare what the table held before and after their inserts. Nothing
+/// here depends on how the engine stores a value out of range or `NULL`, so every engine runs it.
+pub fn read_suite(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
         repo.insert(post, None)
             .expect("insert")
@@ -256,6 +266,17 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
     );
 
     read_statements(repo);
+}
+
+/// The write statements' checks, on post types of their own (`wr-*`). Panics naming the failing check. It runs on an
+/// empty table or after [`read_suite`]; the auto-draft check compares the ids before and after its inserts.
+///
+/// It pins MySQL's behaviour under WordPress's `sql_mode` (`wpdb::set_sql_mode()` removes the strict modes): a
+/// negative parent or import id is clamped (the parent stored as `0`, the id taking the next auto-increment value), a
+/// `NULL` parent is rejected in an `INSERT` (error 1048) and stored as `0` in an `UPDATE`, and an update counts the
+/// rows it changed. A repository on an engine that does not behave that way (SQLite) runs [`read_suite`] alone, and
+/// a SQL repository on MySQL must run with that `sql_mode` to pass.
+pub fn write_suite(repo: &dyn PostRepository) {
     write_statements(repo);
 }
 
