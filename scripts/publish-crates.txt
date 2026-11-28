@@ -41,6 +41,7 @@ speedyspec-abilities-contracts
 speedyspec-wp-theme-json-contracts
 speedyspec-wp-posts-contracts
 speedyspec-wp-meta-contracts
+speedyspec-wp-options-contracts
 speedyspec-wp-kses-lexical
 speedyspec-wp-hooks
 speedyspec-php-ext

@@ -2033,6 +2033,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "speedyspec-wp-options-contracts"
+version = "0.1.0"
+dependencies = [
+ "speedyspec-data",
+ "speedyspec-wp-hooks-contracts",
+ "speedyspec-wp-object-cache-contracts",
+]
+
+[[package]]
 name = "speedyspec-wp-password-contracts"
 version = "0.4.0"
 dependencies = [

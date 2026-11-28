@@ -200,6 +200,12 @@
       "component": "speedyspec-wp-object-cache-contracts",
       "changelog-path": "CHANGELOG.md"
     },
+    "crates/speedyspec-wp-options-contracts": {
+      "component": "speedyspec-wp-options-contracts",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0",
+      "release-as": "0.1.0"
+    },
     "crates/speedyspec-wp-password-contracts": {
       "component": "speedyspec-wp-password-contracts",
       "changelog-path": "CHANGELOG.md"
