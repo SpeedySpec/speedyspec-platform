@@ -38,3 +38,8 @@ speedyspec-php = { path = "../speedyspec-php", version = "0.8.1", default-featur
 tar = "0.4"
 tempfile = "3"
 ureq = "3"
+
+# The driver in the embedded PHP: one interpreter per process, so the cases run from one main.
+[[test]]
+name = "driver"
+harness = false

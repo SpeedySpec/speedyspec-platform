@@ -14,6 +14,14 @@ Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platf
 - `Catalogue`, `Scenario` and `Fixture`: an area's scenarios and what WordPress's own code returned for them.
 - `ScenarioRunner`: one side of a replay (WordPress, or a port); `PhpRunner` runs scenarios in the embedded PHP.
 - `replay`: runs an area's scenarios through a runner and returns each `Mismatch` against the fixture.
+- Recording writes: a scenario or step may freeze PHP's clock (`clock`), log a user in (`user`), snapshot tables'
+  rows ordered by primary key (`snapshot`) and report the normalised cron schedule (`cron`). The clock decorates
+  `time()`, `microtime()`, `date()`/`gmdate()` without a timestamp and `DateTime` "now" in the engine's function
+  table, so `current_time()` and `wp_date()` follow it. Not frozen: MySQL's `NOW()`, `DateTime` strings other than
+  "now" (relative, `"now UTC"`, time-only), `strtotime()` without a base, `mktime()`, `hrtime()`, `microtime()` with
+  an array or object argument, and code the opcache JIT compiled (the runner's PHP runs with the JIT off).
+  Snapshots and the cron row are read through the driver's own MySQL connection, so recording them runs no filter
+  and leaves `$wpdb` untouched.
 - `try_compat_dir`: where the catalogue lives. It reads `SPEEDYSPEC_COMPAT_DIR` and has no fallback.
 
 ## Install
