@@ -772,3 +772,53 @@ fn a_bad_slug_check_can_throw() {
         Err(PostError::Hook(_))
     ));
 }
+
+/// A PHP string a bridge passed through a hook untouched.
+struct UnreadPhpString(Vec<u8>);
+
+fn readable(any: &dyn std::any::Any) -> bool {
+    any.is::<UnreadPhpString>()
+}
+
+fn read(any: &dyn std::any::Any) -> Option<HookValue> {
+    any.downcast_ref::<UnreadPhpString>()
+        .map(|s| HookValue::Bytes(s.0.clone()))
+}
+
+#[test]
+fn a_hook_value_normalises_to_null_int_or_string() {
+    // `Php` never holds what `Null`, `Int` or `Str` expresses, so every repository prints a PHP string the same way.
+    speedyspec_hooks::set_opaque_reader(speedyspec_hooks::OpaqueReader { readable, read });
+    assert_eq!(RowValue::from_hook(HookValue::Null), RowValue::Null);
+    assert_eq!(RowValue::from_hook(HookValue::Int(-5)), RowValue::Int(-5));
+    assert_eq!(
+        RowValue::from_hook(HookValue::Str("publish".to_string())),
+        RowValue::Str(b"publish".to_vec())
+    );
+    assert_eq!(
+        RowValue::from_hook(HookValue::Bytes(vec![0xFF, b'x'])),
+        RowValue::Str(vec![0xFF, b'x'])
+    );
+    let unread: Rc<dyn std::any::Any> = Rc::new(UnreadPhpString(b"draft".to_vec()));
+    assert_eq!(
+        RowValue::from_hook(HookValue::Opaque(unread)),
+        RowValue::Str(b"draft".to_vec())
+    );
+
+    // A float, a bool, an array and an object the bridge keeps opaque stay PHP values.
+    assert_eq!(
+        RowValue::from_hook(HookValue::Float(1.5)),
+        RowValue::Php(HookValue::Float(1.5))
+    );
+    assert_eq!(
+        RowValue::from_hook(HookValue::Bool(false)),
+        RowValue::Php(HookValue::Bool(false))
+    );
+    assert_eq!(
+        RowValue::from_hook(HookValue::Array(Vec::new())),
+        RowValue::Php(HookValue::Array(Vec::new()))
+    );
+    let object: Rc<dyn std::any::Any> = Rc::new(7_u8);
+    let kept = RowValue::from_hook(HookValue::Opaque(object.clone()));
+    assert!(matches!(kept, RowValue::Php(HookValue::Opaque(h)) if Rc::ptr_eq(&h, &object)));
+}

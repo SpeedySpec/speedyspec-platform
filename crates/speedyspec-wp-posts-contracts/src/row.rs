@@ -89,6 +89,11 @@ pub fn column_format(name: impl AsRef<[u8]>) -> ColumnFormat {
 ///   `doing_it_wrong_trigger_error` filter, then prints `''` (`0` under `%d`). That happens after `process_fields()`
 ///   has passed, just before the statement is sent.
 ///
+/// [`RowValue::Php`] never holds a value [`RowValue::Null`], [`RowValue::Int`] or [`RowValue::Str`] expresses: a hook
+/// value's `Null`, `Int`, `Str` and `Bytes` (bytes are a PHP string too), and an `Opaque` the bridge reads as one of
+/// those, belong in those variants. Build a value from a hook value with [`RowValue::from_hook`], which normalises
+/// them, so two repositories never print the same PHP string differently.
+///
 /// It is `#[non_exhaustive]`.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -99,8 +104,36 @@ pub enum RowValue {
     Int(i64),
     /// A PHP string, as bytes.
     Str(Vec<u8>),
-    /// Any other PHP value (a float, a bool, an array, an object), as the hooks carry it.
+    /// Any other PHP value (a float, a bool, an array, an object), as the hooks carry it; never one of the above.
     Php(HookValue),
+}
+
+impl RowValue {
+    /// The row value for a PHP value as the hooks carry it: `Null`, `Int`, `Str` and `Bytes` become
+    /// [`RowValue::Null`], [`RowValue::Int`] and [`RowValue::Str`]; an `Opaque` is read through the bridge
+    /// ([`HookValue::read`]) and normalised the same way when it reads as one of those (a PHP string passed through a
+    /// hook untouched). Anything else (a float, a bool, an array, an object the bridge keeps opaque) is
+    /// [`RowValue::Php`], as given.
+    pub fn from_hook(value: HookValue) -> RowValue {
+        fn scalar(value: &HookValue) -> Option<RowValue> {
+            match value {
+                HookValue::Null => Some(RowValue::Null),
+                HookValue::Int(n) => Some(RowValue::Int(*n)),
+                HookValue::Str(s) => Some(RowValue::Str(s.as_bytes().to_vec())),
+                HookValue::Bytes(b) => Some(RowValue::Str(b.clone())),
+                _ => None,
+            }
+        }
+        if let Some(row) = scalar(&value) {
+            return row;
+        }
+        if let HookValue::Opaque(_) = value
+            && let Some(row) = scalar(value.read().as_ref())
+        {
+            return row;
+        }
+        RowValue::Php(value)
+    }
 }
 
 /// The `$data` array `wp_insert_post()` passes to `$wpdb->insert( $wpdb->posts, $data )` or `$wpdb->update(

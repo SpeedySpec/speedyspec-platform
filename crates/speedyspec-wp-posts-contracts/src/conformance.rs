@@ -240,6 +240,68 @@ pub fn read_suite(repo: &dyn PostRepository) {
         || format!("{typed:?}"),
     );
 
+    // insert_writes_a_normalised_hook_string_as_a_string: `RowValue::from_hook` turns a hook's bytes into a string.
+    let from_hook = repo
+        .insert(
+            &PostRow::from_post(&named("hooked", "post", 0))
+                .with(
+                    "post_title",
+                    RowValue::from_hook(HookValue::Bytes(b"From a hook".to_vec())),
+                )
+                .with(
+                    "post_excerpt",
+                    RowValue::from_hook(HookValue::Str("Excerpt".to_string())),
+                ),
+        )
+        .expect("insert")
+        .written()
+        .expect("the insert returns an id");
+    let hooked = find(from_hook);
+    ensure(
+        "insert_writes_a_normalised_hook_string_as_a_string",
+        hooked.as_ref().is_some_and(|p| {
+            p.title == b"From a hook".to_vec() && p.excerpt == b"Excerpt".to_vec()
+        }),
+        || format!("{hooked:?}"),
+    );
+
+    // insert_refuses_an_over_length_string: `post_status` is varchar(20), so `strip_invalid_text()` makes `$wpdb`
+    // return false before any statement.
+    let over = repo
+        .insert(
+            &PostRow::from_post(&named("over-length", "post", 0))
+                .with("post_status", RowValue::Str(vec![b'x'; 21])),
+        )
+        .expect("insert");
+    let over_owner = repo
+        .flat_slug_owner(&slug("over-length"), &post_type("post"), PostId(0))
+        .expect("flat_slug_owner");
+    ensure(
+        "insert_refuses_an_over_length_string",
+        over.last_error().is_some() && over_owner.is_none(),
+        || format!("{over:?} {over_owner:?}"),
+    );
+
+    // insert_sends_an_over_length_non_string: a float under `%s` is never length-checked, so the statement is sent
+    // (MySQL keeps the first 20 characters of `-1.2345678901235E+308` outside strict mode).
+    let long_float = repo
+        .insert(
+            &PostRow::from_post(&named("over-length-float", "post", 0)).with(
+                "post_status",
+                RowValue::Php(HookValue::Float(-1.2345678901234567e308)),
+            ),
+        )
+        .expect("insert")
+        .written();
+    let long_owner = repo
+        .flat_slug_owner(&slug("over-length-float"), &post_type("post"), PostId(0))
+        .expect("flat_slug_owner");
+    ensure(
+        "insert_sends_an_over_length_non_string",
+        long_float.is_some() && long_owner == Some(slug("over-length-float")),
+        || format!("{long_float:?} {long_owner:?}"),
+    );
+
     // a_failed_insert_carries_last_error: the engine's message comes back with the failure.
     let failed = repo
         .insert(&PostRow::from_post(&named("failed", "post", 0)).with("bogus", RowValue::Int(1)))
