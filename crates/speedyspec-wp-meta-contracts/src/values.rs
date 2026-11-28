@@ -37,6 +37,23 @@ impl MetaType {
         }
     }
 
+    /// The statement [`MetaRepository::ids_of_object`](crate::MetaRepository::ids_of_object) runs, before
+    /// `prepare()`, for the meta table `table`: `SELECT {id} FROM {table} WHERE {object} = %d`. WordPress's delete
+    /// paths for posts, terms and sites end it with a space (`... = %d "`); those for comments and users do not.
+    /// A custom type has no such path in WordPress and takes the form without the space.
+    pub fn object_ids_query(&self, table: &str) -> String {
+        let tail = if matches!(self.0.as_str(), "post" | "term" | "blog") {
+            " "
+        } else {
+            ""
+        };
+        format!(
+            "SELECT {id} FROM {table} WHERE {object} = %d{tail}",
+            id = self.id_column(),
+            object = self.object_column(),
+        )
+    }
+
     /// The object cache group: `{type}_meta`.
     pub fn cache_group(&self) -> String {
         format!("{}_meta", self.0)

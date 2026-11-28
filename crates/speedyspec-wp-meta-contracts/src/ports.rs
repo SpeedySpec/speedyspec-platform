@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use speedyspec_php_serialize::PhpValue;
 
-use crate::{Meta, MetaError, MetaId, MetaKey, MetaType, ObjectId, SerializedValue};
+use crate::{Meta, MetaError, MetaId, MetaKey, MetaRow, MetaType, ObjectId, SerializedValue};
 
 /// One meta table (Repository per meta type). Rows are compared byte for byte; collation is the SQL adapter's.
 pub trait MetaRepository {
@@ -60,9 +60,29 @@ pub trait MetaRepository {
     ) -> Result<u64, MetaError>;
     /// `delete_metadata_by_mid()`: `wpdb::delete WHERE {id} = %d`.
     fn delete_by_mid(&self, mid: MetaId) -> Result<u64, MetaError>;
-    /// `update_meta_cache()`'s query with the id column added, because [`Meta`] carries `mid`:
-    /// `SELECT {id}, {object}, meta_key, meta_value ... WHERE {object} IN (..) ORDER BY {id} ASC`.
-    fn for_objects(&self, objects: &[ObjectId]) -> Result<Vec<Meta>, MetaError>;
+    /// `update_meta_cache()`'s query (meta.php 1268), with `{id_list}` the object ids joined with `,`:
+    ///
+    /// `SELECT $column, meta_key, meta_value FROM $table WHERE $column IN ($id_list) ORDER BY $id_column ASC`
+    ///
+    /// So for posts: `SELECT post_id, meta_key, meta_value FROM wp_postmeta WHERE post_id IN (1,2) ORDER BY meta_id
+    /// ASC`. The rows come back in id order without the id column (hence [`MetaRow`], not [`Meta`]); an empty list
+    /// runs no statement and is empty.
+    fn for_objects(&self, objects: &[ObjectId]) -> Result<Vec<MetaRow>, MetaError>;
+    /// The meta ids of one object, as the functions that delete an object read them before deleting its meta, with
+    /// `get_col( prepare( .., $object_id ) )`. The statement is `SELECT {id} FROM {table} WHERE {object} = %d`,
+    /// with the trailing space some callers leave before the closing quote; [`MetaType::object_ids_query`] builds
+    /// it byte for byte:
+    ///
+    /// - `wp_delete_post()` (post.php 4129) and `wp_delete_attachment()` (post.php 7121):
+    ///   `"SELECT meta_id FROM $wpdb->postmeta WHERE post_id = %d "`
+    /// - `wp_delete_term()` (taxonomy.php 2272): `"SELECT meta_id FROM $wpdb->termmeta WHERE term_id = %d "`
+    /// - `wp_delete_site()` (ms-site.php 264): `"SELECT meta_id FROM $wpdb->blogmeta WHERE blog_id = %d "`
+    /// - `wp_delete_comment()` (comment.php 1634): `"SELECT meta_id FROM $wpdb->commentmeta WHERE comment_id = %d"`
+    /// - `wp_delete_user()` (wp-admin/includes/user.php 444) and `wpmu_delete_user()` (wp-admin/includes/ms.php 201):
+    ///   `"SELECT umeta_id FROM $wpdb->usermeta WHERE user_id = %d"`
+    ///
+    /// No `ORDER BY`, so the ids come back in the table's order.
+    fn ids_of_object(&self, object: ObjectId) -> Result<Vec<MetaId>, MetaError>;
 }
 
 /// `_get_meta_table()` as a factory (Abstract Factory): `None` when the type has no table.

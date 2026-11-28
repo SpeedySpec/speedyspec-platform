@@ -31,11 +31,14 @@ impl RegisteredMetaKey {
     }
 }
 
-/// A read port over the registered keys (Registry): `get_registered_meta_keys()` and `get_registered_metadata()`
-/// ask it; `register_meta()` fills it.
+/// A read port over the registered keys (Registry): `get_registered_meta_keys()`, `get_registered_metadata()` and
+/// `filter_default_metadata()` ask it; `register_meta()` fills it.
 pub trait MetaKeys {
     /// `get_registered_meta_keys()`: every key registered for `object_type` and `subtype`.
     fn keys(&self, object_type: &str, subtype: &str) -> Vec<RegisteredMetaKey>;
     /// The entry for one key, `None` when it is not registered for `object_type` and `subtype`.
     fn find(&self, object_type: &str, subtype: &str, key: &MetaKey) -> Option<RegisteredMetaKey>;
+    /// The subtypes of `$wp_meta_keys[ $object_type ]` in insertion order, empty for an unknown type.
+    /// `filter_default_metadata()` walks them to gather a key's defaults before it asks for the object's subtype.
+    fn subtypes(&self, object_type: &str) -> Vec<String>;
 }

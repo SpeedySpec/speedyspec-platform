@@ -13,7 +13,7 @@ mod metadata;
 mod ports;
 mod values;
 
-pub use entity::Meta;
+pub use entity::{Meta, MetaRow};
 pub use error::{MetaError, MetadataError};
 pub use keys::{MetaKeys, RegisteredMetaKey};
 pub use metadata::{Metadata, UpdateOutcome};

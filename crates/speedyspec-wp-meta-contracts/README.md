@@ -11,11 +11,13 @@ Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platf
 
 ## What it gives you
 
-- `Meta`: the metadata entity, a plain object that knows nothing about storage.
+- `Meta`: the metadata entity, a plain object that knows nothing about storage, and `MetaRow`, a row as
+  `update_meta_cache()` reads it (no meta id).
 - `MetaType`, `MetaKey`, `MetaId`, `ObjectId` and `SerializedValue`.
 - `Metadata`: the metadata API, one method per `meta.php` function, with `UpdateOutcome` and `MetadataError`.
-- `MetaKeys` (a read port over the registered keys) and `RegisteredMetaKey`.
-- The repository ports, `Installing`, `MetaError`, and a `conformance` suite.
+- `MetaKeys` (a read port over the registered keys and the subtypes they sit under) and `RegisteredMetaKey`.
+- The repository ports, one `$wpdb` statement per method (`MetaType::object_ids_query` builds the one
+  `wp_delete_post()` and its siblings run), `Installing`, `MetaError`, and a `conformance` suite.
 
 ## Install
 
