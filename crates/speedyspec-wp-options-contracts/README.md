@@ -11,8 +11,9 @@ Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platf
 
 ## What it gives you
 
-- `Options`: `get_option`, `add_option`, `update_option` and `delete_option`, with WordPress's arguments, plus
-  `update_option_if`, `stored_bytes`, `forget_cached` and `serialized_form` for compare-and-swap writers.
+- `Options`: `get_option`, `add_option`, `update_option` and `delete_option`, with WordPress's arguments.
+- `ConditionalOptions: Options`: `update_option_if`, `stored_bytes`, `forget_cached` and `serialized_form`, for
+  compare-and-swap writers (cron's `cron` option).
 - `ConditionalWrite`: what a compare-and-swap `update_option_if` did.
 - `OptionsError`, which keeps a callback's PHP exception whole.
 - `TypedOptions` and `FromOptionValue`: typed reads (`HookValue`, `String`, `i64`, `bool`) over any `Options`.
@@ -45,7 +46,7 @@ Implementations live in speedyspec-server and are bound in the service container
 your own by implementing a port and binding it in their place; a PHP implementation replaces it through the
 seam's PHP twin.
 
-**Ports:** `Options`.
+**Ports:** `ConditionalOptions`, `Options`.
 
 ## Versioning
 

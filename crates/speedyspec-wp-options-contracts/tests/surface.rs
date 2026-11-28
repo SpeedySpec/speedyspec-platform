@@ -8,8 +8,8 @@ use std::rc::Rc;
 use speedyspec_wp_hooks_contracts::{HookError, HookValue};
 use speedyspec_wp_object_cache_contracts::ObjectCacheError;
 use speedyspec_wp_options_contracts::{
-    Autoload, AutoloadRequest, ConditionalWrite, FromOptionValue, Options, OptionsError,
-    TypedOptions, php_empty, php_string,
+    Autoload, AutoloadRequest, ConditionalOptions, ConditionalWrite, FromOptionValue, Options,
+    OptionsError, TypedOptions, php_empty, php_string,
 };
 
 /// Options held in memory: enough to drive the facade and the compare-and-swap shape.
@@ -92,7 +92,9 @@ impl Options for Dummy {
         rows.retain(|(n, _)| n != name);
         Ok(rows.len() != before)
     }
+}
 
+impl ConditionalOptions for Dummy {
     fn update_option_if(
         &self,
         name: &str,
@@ -163,7 +165,6 @@ fn the_trait_is_object_safe() {
     );
     assert!(options.delete_option("new").unwrap());
     assert!(!options.delete_option("new").unwrap());
-    options.forget_cached("blogname").unwrap();
 }
 
 #[test]
@@ -282,8 +283,24 @@ fn conditional_write_equality_is_unchanged() {
 }
 
 #[test]
+fn the_conditional_trait_is_object_safe_and_extends_options() {
+    let conditional: Rc<dyn ConditionalOptions> = Rc::new(Dummy::with(&[]));
+    conditional.forget_cached("blogname").unwrap();
+    assert_eq!(conditional.stored_bytes("blogname").unwrap(), None);
+    // A compare-and-swap writer also reads and writes through the plain option API.
+    assert!(
+        conditional
+            .update_option("blogname", HookValue::Str("A".into()), HookValue::Null)
+            .unwrap()
+    );
+    let plain: Rc<dyn Options> = Rc::new(Dummy::with(&[]));
+    let _ = TypedOptions::new(plain);
+}
+
+#[test]
 fn a_compare_and_swap_write_conflicts_only_when_the_bytes_moved() {
-    let options: Rc<dyn Options> = Rc::new(Dummy::with(&[("cron", HookValue::Str("a".into()))]));
+    let options: Rc<dyn ConditionalOptions> =
+        Rc::new(Dummy::with(&[("cron", HookValue::Str("a".into()))]));
     let read = options.get_option("cron", None).unwrap();
     let version = options.serialized_form(&read).unwrap();
     assert_eq!(options.stored_bytes("cron").unwrap(), Some(version.clone()));

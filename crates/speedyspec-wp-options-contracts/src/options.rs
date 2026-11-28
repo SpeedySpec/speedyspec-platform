@@ -1,4 +1,5 @@
-//! [`Options`]: the option API other seams call (the port; the options seam's `OptionsApi` implements it).
+//! [`Options`]: the option API other seams call, and [`ConditionalOptions`], its compare-and-swap extension (the
+//! ports; the options seam's `OptionsApi` implements both).
 
 use speedyspec_wp_hooks_contracts::HookValue;
 
@@ -7,8 +8,7 @@ use crate::{ConditionalWrite, OptionsError};
 /// WordPress's option functions, one method per `option.php` function, with every filter and action WordPress runs.
 ///
 /// Arguments are PHP's: `$autoload` stays a value (`null`, a bool or a string), because `update_option` treats `null`
-/// apart from every other value. The last three methods serve compare-and-swap writers (cron's `cron` option): read
-/// the stored bytes, compare them with what was read, and write only where they are unchanged.
+/// apart from every other value.
 pub trait Options {
     /// `get_option( $option, $default_value )`; `default` `None` is a call with one argument.
     fn get_option(&self, name: &str, default: Option<HookValue>)
@@ -34,7 +34,12 @@ pub trait Options {
 
     /// `delete_option( $option )`.
     fn delete_option(&self, name: &str) -> Result<bool, OptionsError>;
+}
 
+/// [`Options`] for compare-and-swap writers that read, change and write back an option other processes change too
+/// (cron's `cron` option): read the stored bytes, compare them with what was read, and write only where they are
+/// unchanged (Interface Segregation: general callers depend on [`Options`] alone).
+pub trait ConditionalOptions: Options {
     /// `update_option( $option, $value, $autoload )`, whose write happens only where the option's stored bytes are
     /// still `expected` (`None`: the option was absent, so the write inserts and never overwrites).
     ///

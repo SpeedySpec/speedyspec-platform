@@ -2,7 +2,7 @@
 //! other processes change too, as cron does with its `cron` option). Optimistic Offline Lock: the version is the
 //! stored bytes as read.
 
-/// What [`Options::update_option_if`](crate::Options::update_option_if) did.
+/// What [`Options::update_option_if`](crate::ConditionalOptions::update_option_if) did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionalWrite {
     /// Written; every cache update and action `update_option` makes after its write ran.
