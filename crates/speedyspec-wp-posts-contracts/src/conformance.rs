@@ -2,7 +2,7 @@
 
 use crate::{
     CommentStatus, LastPostField, MimeFilter, MimeType, PageRow, PingStatus, Post, PostDate,
-    PostDateTime, PostId, PostRepository, PostStatusName, PostTypeName, Slug, Timezone,
+    PostDateTime, PostId, PostParent, PostRepository, PostStatusName, PostTypeName, Slug, Timezone,
 };
 
 fn ensure(check: &str, ok: bool, detail: impl FnOnce() -> String) {
@@ -18,11 +18,11 @@ fn post_type(s: &str) -> PostTypeName {
 }
 
 /// A post of `post_type` named `name` under `parent`, with an auto id.
-fn named(name: &str, kind: &str, parent: u64) -> Post {
+fn named(name: &str, kind: &str, parent: i64) -> Post {
     Post {
         name: slug(name),
         post_type: post_type(kind),
-        parent: PostId(parent),
+        parent: PostParent(parent),
         ..Post::default()
     }
 }
@@ -30,8 +30,9 @@ fn named(name: &str, kind: &str, parent: u64) -> Post {
 /// Runs every check against `repo`, which must start with an empty table and a fresh auto-increment
 /// (`insert_with_id_is_honoured` expects 101 after an explicit 100). Panics naming the failing check.
 ///
-/// The read statements' checks run last, on post types of their own (`rd-*`); the ones that read every page or
-/// every attachment compare what the table held before and after their inserts.
+/// The read statements' checks run next, on post types of their own (`rd-*`); the ones that read every page or
+/// every attachment compare what the table held before and after their inserts. The write statements' checks run
+/// last, on post types of their own (`wr-*`); the auto-draft check compares the ids before and after its inserts.
 pub fn post_repository_suite(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
         repo.insert(post)
@@ -99,7 +100,7 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
             gmt: PostDateTime::new("2024-02-06 16:21:31"),
         },
         content_filtered: b"filtered".to_vec(),
-        parent: b,
+        parent: b.into(),
         guid: b"http://example.org/?p=1".to_vec(),
         menu_order: -3,
         post_type: post_type("page"),
@@ -167,8 +168,8 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
     );
 
     // hierarchical_owner_matches_type_or_attachment_under_the_parent
-    let hier = |name: &str, kind: &str, except: PostId, parent: u64| {
-        repo.hierarchical_slug_owner(&slug(name), &post_type(kind), except, PostId(parent))
+    let hier = |name: &str, kind: &str, except: PostId, parent: i64| {
+        repo.hierarchical_slug_owner(&slug(name), &post_type(kind), except, PostParent(parent))
             .expect("hierarchical_slug_owner")
     };
     let chapter = insert(&named("chapter", "page", 50));
@@ -229,7 +230,7 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
         .attachment_slug_owner(&slug("0"), PostId(0))
         .expect("attachment_slug_owner");
     let empty_hier = repo
-        .hierarchical_slug_owner(&slug(""), &post_type("post"), PostId(0), PostId(0))
+        .hierarchical_slug_owner(&slug(""), &post_type("post"), PostId(0), PostParent::NONE)
         .expect("hierarchical_slug_owner");
     ensure(
         "owner_returns_the_stored_name",
@@ -241,6 +242,7 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
     );
 
     read_statements(repo);
+    write_statements(repo);
 }
 
 /// Checks for repositories whose columns are binary-safe (memory, latin1 or binary tables); `post_repository_suite`
@@ -343,7 +345,7 @@ fn read_statements(repo: &dyn PostRepository) {
         },
         ..named("zero-dated", "rd-many", 0)
     });
-    let child = insert(&named("child", "rd-many", zero_dated.0));
+    let child = insert(&named("child", "rd-many", PostParent::from(zero_dated).0));
     let mut many = repo
         .find_many(&[child, PostId(9_998), zero_dated, child])
         .expect("find_many");
@@ -355,7 +357,7 @@ fn read_statements(repo: &dyn PostRepository) {
         },
         Post {
             id: child,
-            ..named("child", "rd-many", zero_dated.0)
+            ..named("child", "rd-many", PostParent::from(zero_dated).0)
         },
     ];
     ensure(
@@ -392,7 +394,7 @@ fn read_statements(repo: &dyn PostRepository) {
     let pending = insert(&with_status("about", "rd-page", "pending"));
     let republished = insert(&with_status("about", "rd-page", "publish"));
     let team = insert(&Post {
-        parent: published,
+        parent: published.into(),
         ..with_status("team", "rd-page", "publish")
     });
     let auto_draft = insert(&with_status("team", "rd-page", "auto-draft"));
@@ -710,6 +712,342 @@ fn last_post_time(repo: &dyn PostRepository) {
         "last_post_time_of_nothing_is_none",
         drafts.is_none() && unknown.is_none() && no_types.is_none(),
         || format!("{drafts:?} {unknown:?} {no_types:?}"),
+    );
+}
+
+fn write_statements(repo: &dyn PostRepository) {
+    let insert = |post: &Post| {
+        repo.insert(post)
+            .expect("insert")
+            .expect("the insert returns an id")
+    };
+    let find = |id: PostId| repo.find(id).expect("find").expect("the post exists");
+    let missing = PostId(9_996);
+
+    // insert_negative_parent_is_stored_as_zero: WordPress sends `post_parent = -5`; MySQL stores 0 under its
+    // `sql_mode`, and that is what is read back.
+    let negative = insert(&named("wr-negative", "wr-page", -5));
+    let stored = find(negative).parent;
+    ensure(
+        "insert_negative_parent_is_stored_as_zero",
+        stored == PostParent::NONE,
+        || format!("{stored:?}"),
+    );
+
+    // hierarchical_owner_under_a_negative_parent_matches_nothing: `post_parent = -5` matches no unsigned value, so
+    // the top-level page does not hold the slug for a page under -5.
+    let owner = |parent: PostParent| {
+        repo.hierarchical_slug_owner(&slug("wr-clash"), &post_type("wr-page"), PostId(0), parent)
+            .expect("hierarchical_slug_owner")
+    };
+    insert(&named("wr-clash", "wr-page", 0));
+    let under_negative = owner(PostParent(-5));
+    let top_level = owner(PostParent::NONE);
+    ensure(
+        "hierarchical_owner_under_a_negative_parent_matches_nothing",
+        under_negative.is_none() && top_level == Some(slug("wr-clash")),
+        || format!("{under_negative:?} {top_level:?}"),
+    );
+
+    // import_id_taken_sees_existing_ids
+    let taken = repo.import_id_taken(negative).expect("import_id_taken");
+    let free = repo.import_id_taken(missing).expect("import_id_taken");
+    let zero = repo.import_id_taken(PostId(0)).expect("import_id_taken");
+    ensure(
+        "import_id_taken_sees_existing_ids",
+        taken && !free && !zero,
+        || format!("{taken} {free} {zero}"),
+    );
+
+    // update_writes_every_column_but_id_and_comment_count: the rows changed, as MySQL counts them.
+    let original = Post {
+        comment_count: 0,
+        ..named("wr-before", "wr-post", 0)
+    };
+    let id = insert(&original);
+    let changed = Post {
+        id,
+        author: 9,
+        date: PostDate {
+            local: PostDateTime::new("2024-04-01 08:00:00"),
+            gmt: PostDateTime::new("2024-04-01 12:00:00"),
+        },
+        content: b"new content".to_vec(),
+        title: b"New title".to_vec(),
+        excerpt: b"New excerpt".to_vec(),
+        status: PostStatusName::new("pending"),
+        comment_status: CommentStatus::new("closed"),
+        ping_status: PingStatus::new("closed"),
+        password: b"pw".to_vec(),
+        name: slug("wr-after"),
+        to_ping: b"http://c.example/".to_vec(),
+        pinged: b"http://d.example/".to_vec(),
+        modified: PostDate {
+            local: PostDateTime::new("2024-04-02 08:00:00"),
+            gmt: PostDateTime::ZERO,
+        },
+        content_filtered: b"cf".to_vec(),
+        parent: PostParent(3),
+        guid: b"http://example.org/?p=wr".to_vec(),
+        menu_order: 4,
+        post_type: post_type("wr-other"),
+        mime_type: MimeType::from("text/plain"),
+        comment_count: 7,
+    };
+    let first = repo.update(&changed).expect("update");
+    let read = find(id);
+    let again = repo.update(&changed).expect("update");
+    let nobody = repo
+        .update(&Post {
+            id: missing,
+            ..changed.clone()
+        })
+        .expect("update");
+    ensure(
+        "update_writes_every_column_but_id_and_comment_count",
+        first == Some(1)
+            && read
+                == Post {
+                    comment_count: 0,
+                    ..changed.clone()
+                }
+            && again == Some(0)
+            && nobody == Some(0)
+            && repo.find(missing).expect("find").is_none(),
+        || format!("{first:?} {read:?} {again:?} {nobody:?}"),
+    );
+
+    // update_negative_parent_is_stored_as_zero
+    repo.update(&Post {
+        parent: PostParent(-7),
+        ..changed.clone()
+    })
+    .expect("update");
+    let stored = find(id).parent;
+    ensure(
+        "update_negative_parent_is_stored_as_zero",
+        stored == PostParent::NONE,
+        || format!("{stored:?}"),
+    );
+
+    column_updates(repo);
+    deleting(repo);
+}
+
+/// The one-column updates: each writes its column and nothing else, and counts the rows it changed.
+fn column_updates(repo: &dyn PostRepository) {
+    let base = Post {
+        guid: b"http://example.org/?p=old".to_vec(),
+        pinged: b"http://old.example/".to_vec(),
+        status: PostStatusName::new("draft"),
+        ..named("wr-column", "wr-col", 0)
+    };
+    let id = repo
+        .insert(&base)
+        .expect("insert")
+        .expect("the insert returns an id");
+    let missing = PostId(9_996);
+    let read = || repo.find(id).expect("find").expect("the post exists");
+    let mut expected = Post { id, ..base };
+
+    type Check<'a> = (
+        &'a str,
+        Box<dyn Fn(PostId) -> Option<u64> + 'a>,
+        Box<dyn Fn(&mut Post) + 'a>,
+    );
+    let checks: Vec<Check<'_>> = vec![
+        (
+            "update_name_writes_post_name",
+            Box::new(|id| {
+                repo.update_name(id, &slug("wr-column__trashed"))
+                    .expect("update_name")
+            }),
+            Box::new(|p: &mut Post| p.name = slug("wr-column__trashed")),
+        ),
+        (
+            "update_guid_writes_guid",
+            Box::new(|id| {
+                repo.update_guid(id, b"http://example.org/?p=new")
+                    .expect("update_guid")
+            }),
+            Box::new(|p: &mut Post| p.guid = b"http://example.org/?p=new".to_vec()),
+        ),
+        (
+            "update_status_writes_post_status",
+            Box::new(|id| {
+                repo.update_status(id, &PostStatusName::new("publish"))
+                    .expect("update_status")
+            }),
+            Box::new(|p: &mut Post| p.status = PostStatusName::new("publish")),
+        ),
+        (
+            "update_pinged_writes_pinged",
+            Box::new(|id| {
+                repo.update_pinged(id, b"http://old.example/\nhttp://new.example/")
+                    .expect("update_pinged")
+            }),
+            Box::new(|p: &mut Post| {
+                p.pinged = b"http://old.example/\nhttp://new.example/".to_vec();
+            }),
+        ),
+        (
+            "update_post_type_writes_post_type",
+            Box::new(|id| {
+                repo.update_post_type(id, &post_type("wr-col-2"))
+                    .expect("update_post_type")
+            }),
+            Box::new(|p: &mut Post| p.post_type = post_type("wr-col-2")),
+        ),
+    ];
+    for (check, update, apply) in &checks {
+        let first = update(id);
+        apply(&mut expected);
+        let after = read();
+        let again = update(id);
+        let nobody = update(missing);
+        ensure(
+            check,
+            first == Some(1) && after == expected && again == Some(0) && nobody == Some(0),
+            || format!("{first:?} {again:?} {nobody:?} {after:?}"),
+        );
+    }
+}
+
+/// `wp_delete_post()`'s statements and `wp_delete_auto_drafts()`' one.
+fn deleting(repo: &dyn PostRepository) {
+    let insert = |post: &Post| {
+        repo.insert(post)
+            .expect("insert")
+            .expect("the insert returns an id")
+    };
+    let parent_of = |id: PostId| {
+        repo.find(id)
+            .expect("find")
+            .expect("the post exists")
+            .parent
+    };
+    let missing = PostId(9_996);
+
+    // raw_row_reads_the_row
+    let tree = insert(&named("wr-tree", "wr-tree", 77));
+    let raw = repo.raw_row(tree).expect("raw_row");
+    let found = repo.find(tree).expect("find");
+    let none = repo.raw_row(missing).expect("raw_row");
+    ensure(
+        "raw_row_reads_the_row",
+        raw.is_some() && raw == found && none.is_none(),
+        || format!("{raw:?} {found:?} {none:?}"),
+    );
+
+    // children_of_type_reads_the_children_of_one_type
+    let from = PostParent::from(tree).0;
+    let first = insert(&named("wr-leaf-1", "wr-tree", from));
+    let second = insert(&named("wr-leaf-2", "wr-tree", from));
+    let other = insert(&named("wr-leaf-3", "wr-other-tree", from));
+    let attachment = insert(&named("wr-file", "attachment", from));
+    let revision = insert(&named("wr-tree-revision", "revision", from));
+    let mut children: Vec<PostId> = repo
+        .children_of_type(tree, &post_type("wr-tree"))
+        .expect("children_of_type")
+        .into_iter()
+        .map(|p| p.id)
+        .collect();
+    children.sort();
+    let no_children = repo
+        .children_of_type(missing, &post_type("wr-tree"))
+        .expect("children_of_type");
+    ensure(
+        "children_of_type_reads_the_children_of_one_type",
+        children == vec![first, second] && no_children.is_empty(),
+        || format!("{children:?} {no_children:?}"),
+    );
+
+    // revision_ids_lists_the_revisions
+    let revisions = repo.revision_ids(tree).expect("revision_ids");
+    let no_revisions = repo.revision_ids(missing).expect("revision_ids");
+    ensure(
+        "revision_ids_lists_the_revisions",
+        revisions == vec![revision] && no_revisions.is_empty(),
+        || format!("{revisions:?} {no_revisions:?}"),
+    );
+
+    // reparent_children_moves_the_children_of_one_type_up
+    let moved = repo
+        .reparent_children(tree, PostParent(77), &post_type("wr-tree"))
+        .expect("reparent_children");
+    let again = repo
+        .reparent_children(tree, PostParent(77), &post_type("wr-tree"))
+        .expect("reparent_children");
+    ensure(
+        "reparent_children_moves_the_children_of_one_type_up",
+        moved == Some(2)
+            && again == Some(0)
+            && parent_of(first) == PostParent(77)
+            && parent_of(second) == PostParent(77)
+            && parent_of(other) == PostParent(from)
+            && parent_of(attachment) == PostParent(from),
+        || format!("{moved:?} {again:?}"),
+    );
+
+    // reparent_attachments_moves_only_attachments_up
+    let moved = repo
+        .reparent_attachments(tree, PostParent(77))
+        .expect("reparent_attachments");
+    let again = repo
+        .reparent_attachments(tree, PostParent(77))
+        .expect("reparent_attachments");
+    ensure(
+        "reparent_attachments_moves_only_attachments_up",
+        moved == Some(1)
+            && again == Some(0)
+            && parent_of(attachment) == PostParent(77)
+            && parent_of(other) == PostParent(from)
+            && parent_of(revision) == PostParent(from),
+        || format!("{moved:?} {again:?}"),
+    );
+
+    // remove_deletes_the_row
+    let removed = repo.remove(tree).expect("remove");
+    let gone = repo.find(tree).expect("find");
+    let again = repo.remove(tree).expect("remove");
+    let kept = repo.find(first).expect("find");
+    ensure(
+        "remove_deletes_the_row",
+        removed == Some(1) && gone.is_none() && again == Some(0) && kept.is_some(),
+        || format!("{removed:?} {gone:?} {again:?}"),
+    );
+
+    // auto_drafts_older_than_a_week_lists_old_and_zero_dated_auto_drafts: `NOW()` is the engine's clock, so the
+    // dates are far from it either way.
+    let dated = |status: &str, local: &str| Post {
+        date: PostDate {
+            local: PostDateTime::new(local),
+            gmt: PostDateTime::ZERO,
+        },
+        ..with_status("wr-draft", "wr-draft", status)
+    };
+    let before = sorted(
+        repo.auto_drafts_older_than_a_week()
+            .expect("auto_drafts_older_than_a_week"),
+    );
+    let old = insert(&dated("auto-draft", "2001-01-01 00:00:00"));
+    let zero = insert(&dated("auto-draft", PostDateTime::ZERO.as_str()));
+    insert(&dated("auto-draft", "2999-01-01 00:00:00"));
+    insert(&dated("draft", "2001-01-01 00:00:00"));
+    let after = sorted(
+        repo.auto_drafts_older_than_a_week()
+            .expect("auto_drafts_older_than_a_week"),
+    );
+    let added: Vec<PostId> = after
+        .iter()
+        .filter(|id| !before.contains(id))
+        .copied()
+        .collect();
+    ensure(
+        "auto_drafts_older_than_a_week_lists_old_and_zero_dated_auto_drafts",
+        sorted(added.clone()) == sorted(vec![old, zero])
+            && before.iter().all(|id| after.contains(id)),
+        || format!("{before:?} {after:?}"),
     );
 }
 

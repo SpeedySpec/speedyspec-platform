@@ -1,4 +1,5 @@
-//! The ports the post entity, post type and status rules read through; adapters implement them at the edge.
+//! The ports the post entity, post type and status rules read and write through; adapters implement them at the
+//! edge.
 //!
 //! Every [`PostRepository`] method is one `$wpdb` call `post.php` makes, so query counts match. A failure `$wpdb`
 //! hides is `Ok` with the empty answer; `Err` is only for failures it would not hide. Rows are compared byte for
@@ -8,13 +9,15 @@
 //! `⇥` stands for one tab, as `post.php` indents them; the lines are joined with newlines (`\n`), the first line is
 //! empty, and nothing follows the last. The SQL repository sends exactly that text, because the `query` filter sees
 //! it. Values are spliced as WordPress splices them: `%s` and `%d` by `$wpdb->prepare()`, quoted lists with
-//! `esc_sql()` on each item, id lists as plain integers.
+//! `esc_sql()` on each item, id lists as plain integers. The statements `$wpdb->insert`, `$wpdb->update` and
+//! `$wpdb->delete` send are the text `wpdb` builds for them: the table and columns in backticks, `%d` for the columns
+//! `$wpdb->field_types` lists and `%s` for the rest, then `prepare()`d.
 
 use speedyspec_php_serialize::PhpValue;
 
 use crate::{
-    LastPostField, MimeFilter, MimeType, Post, PostDateTime, PostError, PostId, PostStatusName,
-    PostStatusObject, PostType, PostTypeName, Slug, Timezone,
+    LastPostField, MimeFilter, MimeType, Post, PostDateTime, PostError, PostId, PostParent,
+    PostStatusName, PostStatusObject, PostType, PostTypeName, Slug, Timezone,
 };
 
 /// One row `get_page_by_path()` selects: `ID, post_name, post_parent, post_type`.
@@ -36,12 +39,22 @@ pub trait PostRepository {
     fn engine(&self) -> String;
     /// `WP_Post::get_instance()`: `SELECT * FROM {posts} WHERE ID = %d LIMIT 1`.
     fn find(&self, id: PostId) -> Result<Option<Post>, PostError>;
-    /// `wp_insert_post()`'s `$wpdb->insert( $wpdb->posts, $data )`: the 21 columns it writes, plus `ID` when
-    /// `post.id` is non-zero (the `import_id` case); `comment_count` is not written (the column default, 0). The
-    /// new id; `None` when `$wpdb->insert` returns false (for example a duplicate ID).
+    /// `wp_insert_post()`'s `$wpdb->insert( $wpdb->posts, $data )` (post.php 5268): the 21 columns it writes, plus
+    /// `ID` when `post.id` is non-zero (the `import_id` case); `comment_count` is not written (the column default,
+    /// 0). The new id; `None` when `$wpdb->insert` returns false (for example a duplicate ID).
     ///
-    /// `wp_insert_post()` first runs a separate `SELECT ID FROM {posts} WHERE ID = %d` (post.php 5251-5256,
-    /// WordPress 7.2-RC2) and drops a taken `import_id`; that pre-check is a later phase's own repository method.
+    /// `wpdb::_insert_replace_helper()` builds it, `%d` for the columns in `$wpdb->field_types` (`post_author`,
+    /// `post_parent`, `menu_order`, `ID`) and `%s` for the rest, then `prepare()`s it:
+    ///
+    /// ```text
+    /// INSERT INTO `{posts}` (`post_author`, `post_date`, `post_date_gmt`, `post_content`, `post_content_filtered`, `post_title`, `post_excerpt`, `post_status`, `post_type`, `comment_status`, `ping_status`, `post_password`, `post_name`, `to_ping`, `pinged`, `post_modified`, `post_modified_gmt`, `post_parent`, `menu_order`, `post_mime_type`, `guid`) VALUES (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %d, %s, %s)
+    /// ```
+    ///
+    /// With an `ID`, `` , `ID` `` follows `` `guid` `` and `, %d` the last `%s`, since `wp_insert_post()` adds the key
+    /// after `compact()`. A negative [`Post::parent`] goes into the statement as it is (`-5`) and is stored as `0`
+    /// ([`PostParent::stored`]).
+    ///
+    /// `wp_insert_post()` first asks [`PostRepository::import_id_taken`] and drops a taken `import_id`.
     fn insert(&self, post: &Post) -> Result<Option<PostId>, PostError>;
     /// `wp_unique_post_slug()`, attachments:
     /// `SELECT post_name FROM {posts} WHERE post_name = %s AND ID != %d LIMIT 1`.
@@ -49,12 +62,14 @@ pub trait PostRepository {
     -> Result<Option<Slug>, PostError>;
     /// `wp_unique_post_slug()`, hierarchical types: `SELECT post_name FROM {posts} WHERE post_name = %s AND
     /// post_type IN ( %s, 'attachment' ) AND ID != %d AND post_parent = %d LIMIT 1`.
+    ///
+    /// A negative `parent` is sent as it is (`post_parent = -5`) and matches no row, since the column is unsigned.
     fn hierarchical_slug_owner(
         &self,
         slug: &Slug,
         post_type: &PostTypeName,
         except: PostId,
-        parent: PostId,
+        parent: PostParent,
     ) -> Result<Option<Slug>, PostError>;
     /// `wp_unique_post_slug()`, flat types:
     /// `SELECT post_name FROM {posts} WHERE post_name = %s AND post_type = %s AND ID != %d LIMIT 1`.
@@ -205,6 +220,89 @@ pub trait PostRepository {
     ///
     /// Each non-empty mime type once, in the engine's order.
     fn available_mime_types(&self, post_type: &PostTypeName) -> Result<Vec<MimeType>, PostError>;
+
+    /// `wp_insert_post()`'s `$wpdb->update( $wpdb->posts, $data, $where )` (post.php 5236): the same 21 columns as
+    /// [`PostRepository::insert`], in its order, where `ID` is `post.id`. `ID` and `comment_count` are not written.
+    ///
+    /// ```text
+    /// UPDATE `{posts}` SET `post_author` = %d, `post_date` = %s, `post_date_gmt` = %s, `post_content` = %s, `post_content_filtered` = %s, `post_title` = %s, `post_excerpt` = %s, `post_status` = %s, `post_type` = %s, `comment_status` = %s, `ping_status` = %s, `post_password` = %s, `post_name` = %s, `to_ping` = %s, `pinged` = %s, `post_modified` = %s, `post_modified_gmt` = %s, `post_parent` = %d, `menu_order` = %d, `post_mime_type` = %s, `guid` = %s WHERE `ID` = %d
+    /// ```
+    ///
+    /// `wpdb::update()` builds it (`` `column` = format `` joined with `, `, the conditions with ` AND `) and
+    /// `prepare()`s it. A negative [`Post::parent`] is sent as it is and stored as `0`.
+    ///
+    /// The rows changed, as MySQL counts them: an update that matches a row but changes nothing is `Some(0)`, and so
+    /// is one that matches none. `None` where `$wpdb->update` returns false.
+    fn update(&self, post: &Post) -> Result<Option<u64>, PostError>;
+    /// `$wpdb->update( $wpdb->posts, array( 'post_name' => $name ), array( 'ID' => $id ) )`:
+    /// ``UPDATE `{posts}` SET `post_name` = %s WHERE `ID` = %d``.
+    ///
+    /// `wp_insert_post()` after the insert or update, for a post with no slug that is not a draft (post.php 5291), and
+    /// `wp_add_trashed_suffix_to_post_name_for_post()` for the `__trashed` suffix (8865). The rows changed, as
+    /// [`PostRepository::update`] counts them.
+    fn update_name(&self, id: PostId, name: &Slug) -> Result<Option<u64>, PostError>;
+    /// `$wpdb->update( $wpdb->posts, array( 'guid' => get_permalink( $id ) ), array( 'ID' => $id ) )`:
+    /// ``UPDATE `{posts}` SET `guid` = %s WHERE `ID` = %d``.
+    ///
+    /// `wp_insert_post()` for a new post with no GUID (post.php 5362), and `_transition_post_status()` for a post
+    /// first published with none (8402). `get_permalink()`'s `false` is written as `''`, as `%s` prints it. The rows
+    /// changed.
+    fn update_guid(&self, id: PostId, guid: &[u8]) -> Result<Option<u64>, PostError>;
+    /// `wp_publish_post()`'s `$wpdb->update( $wpdb->posts, array( 'post_status' => 'publish' ), array( 'ID' =>
+    /// $post->ID ) )` (post.php 5687): ``UPDATE `{posts}` SET `post_status` = %s WHERE `ID` = %d``. The rows changed.
+    fn update_status(&self, id: PostId, status: &PostStatusName) -> Result<Option<u64>, PostError>;
+    /// `add_ping()`'s `$wpdb->update( $wpdb->posts, array( 'pinged' => $new ), array( 'ID' => $post->ID ) )`
+    /// (post.php 6285): ``UPDATE `{posts}` SET `pinged` = %s WHERE `ID` = %d``. The rows changed, which `add_ping()`
+    /// returns.
+    fn update_pinged(&self, id: PostId, pinged: &[u8]) -> Result<Option<u64>, PostError>;
+    /// `set_post_type()`'s `$wpdb->update( $wpdb->posts, array( 'post_type' => $post_type ), array( 'ID' => $post_id
+    /// ) )` (post.php 2475): ``UPDATE `{posts}` SET `post_type` = %s WHERE `ID` = %d``. The rows changed, which
+    /// `set_post_type()` returns.
+    fn update_post_type(
+        &self,
+        id: PostId,
+        post_type: &PostTypeName,
+    ) -> Result<Option<u64>, PostError>;
+    /// `wp_insert_post()`'s `import_id` check (post.php 5254), through `$wpdb->get_var()`:
+    /// `SELECT ID FROM {posts} WHERE ID = %d`. Whether a row has the id, so the `import_id` is dropped.
+    fn import_id_taken(&self, id: PostId) -> Result<bool, PostError>;
+    /// `wp_delete_post()`'s first read (post.php 4034), through `$wpdb->get_row()`:
+    /// `SELECT * FROM {posts} WHERE ID = %d`, with no `LIMIT` (unlike [`PostRepository::find`]). The row, or `None`.
+    fn raw_row(&self, id: PostId) -> Result<Option<Post>, PostError>;
+    /// `wp_delete_post()`'s children of a hierarchical post (post.php 4090-4096), through `$wpdb->get_results()`:
+    /// `SELECT * FROM {posts} WHERE post_parent = %d AND post_type = %s`. The rows, in the engine's order.
+    fn children_of_type(
+        &self,
+        parent: PostId,
+        post_type: &PostTypeName,
+    ) -> Result<Vec<Post>, PostError>;
+    /// `wp_delete_post()`'s `$wpdb->update( $wpdb->posts, $parent_data, $parent_where + array( 'post_type' =>
+    /// $post->post_type ) )` (post.php 4099), when [`PostRepository::children_of_type`] found children:
+    /// ``UPDATE `{posts}` SET `post_parent` = %d WHERE `post_parent` = %d AND `post_type` = %s``, the first `%d`
+    /// `to` (the deleted post's own parent) and the second `from` (the deleted post). The rows changed.
+    fn reparent_children(
+        &self,
+        from: PostId,
+        to: PostParent,
+        post_type: &PostTypeName,
+    ) -> Result<Option<u64>, PostError>;
+    /// `wp_delete_post()`'s revision ids (post.php 4105), through `$wpdb->get_col()`:
+    /// `SELECT ID FROM {posts} WHERE post_parent = %d AND post_type = 'revision'`. In the engine's order.
+    fn revision_ids(&self, parent: PostId) -> Result<Vec<PostId>, PostError>;
+    /// `wp_delete_post()`'s `$wpdb->update( $wpdb->posts, $parent_data, $parent_where + array( 'post_type' =>
+    /// 'attachment' ) )` (post.php 4114), always sent: the statement of [`PostRepository::reparent_children`] with
+    /// `'attachment'` for the `%s`. The rows changed.
+    fn reparent_attachments(&self, from: PostId, to: PostParent) -> Result<Option<u64>, PostError>;
+    /// `wp_delete_post()`'s `$wpdb->delete( $wpdb->posts, array( 'ID' => $post_id ) )` (post.php 4160), which
+    /// `wpdb::delete()` builds: ``DELETE FROM `{posts}` WHERE `ID` = %d``. The rows deleted; `None` where
+    /// `$wpdb->delete` returns false. `wp_delete_post()` returns false for `Some(0)` too.
+    fn remove(&self, id: PostId) -> Result<Option<u64>, PostError>;
+    /// `wp_delete_auto_drafts()` (post.php 8619), through `$wpdb->get_col()`, sent as it is (no `prepare()`):
+    /// `SELECT ID FROM {posts} WHERE post_status = 'auto-draft' AND DATE_SUB( NOW(), INTERVAL 7 DAY ) > post_date`.
+    ///
+    /// `NOW()` is the database's clock in its session time zone; a memory repository uses its own. A zero
+    /// `post_date` (`0000-00-00 00:00:00`) is older than any date, so its auto-draft is listed. In the engine's order.
+    fn auto_drafts_older_than_a_week(&self) -> Result<Vec<PostId>, PostError>;
 }
 
 /// `get_post( $id )`: through whatever cache the binding keeps. Phase 2b's binding has none (`speedyspec-wp-posts`'
@@ -226,6 +324,10 @@ pub trait CurrentPost {
 pub trait PostQuery {
     /// `( new WP_Query() )->query( $args )`: the posts it returns, as PHP holds them.
     fn query(&self, args: PhpValue) -> Result<PhpValue, PostError>;
+    /// `get_posts( $args )`, its defaults and `suppress_filters` included: the posts it returns, as PHP holds them.
+    /// `wp_insert_post()` finds the trashed posts holding a wanted slug through it
+    /// (`wp_add_trashed_suffix_to_post_name_for_trashed_posts()`).
+    fn get_posts(&self, args: PhpValue) -> Result<PhpValue, PostError>;
 }
 
 /// The time functions WordPress's dates use (a table in tests; Rust and PHP adapters in phase 5).
@@ -254,7 +356,7 @@ pub trait BadSlugs {
     /// `wp_unique_post_slug_is_bad_attachment_slug`.
     fn bad_attachment_slug(&self, slug: &[u8]) -> bool;
     /// `wp_unique_post_slug_is_bad_hierarchical_slug`.
-    fn bad_hierarchical_slug(&self, slug: &[u8], post_type: &str, parent: PostId) -> bool;
+    fn bad_hierarchical_slug(&self, slug: &[u8], post_type: &str, parent: PostParent) -> bool;
     /// `wp_unique_post_slug_is_bad_flat_slug`.
     fn bad_flat_slug(&self, slug: &[u8], post_type: &str) -> bool;
 }

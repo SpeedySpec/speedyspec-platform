@@ -1,7 +1,7 @@
 [package]
 name = "speedyspec-wp-posts-contracts"
 version = "0.3.1"
-description = "WordPress's post contracts: the post entity and its values, post type and status names and values, the errors and the ports."
+description = "WordPress's post contracts: the post entity and its values, post type and status names and values, the read and write surfaces, the errors and the ports."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

@@ -8,7 +8,7 @@ use speedyspec_wp_hooks_contracts::HookError;
 use speedyspec_wp_object_cache_contracts::ObjectCacheError;
 use speedyspec_wp_posts_contracts::{
     CurrentPost, Filter, LastPostField, MimeFilter, MimeType, PageRow, Post, PostDateTime,
-    PostError, PostId, PostQuery, PostRef, PostRepository, PostStatusName, PostTypeArg,
+    PostError, PostId, PostParent, PostQuery, PostRef, PostRepository, PostStatusName, PostTypeArg,
     PostTypeName, Posts, Slug, Timezone,
 };
 
@@ -107,7 +107,7 @@ impl PostRepository for Dummy {
         _: &Slug,
         _: &PostTypeName,
         _: PostId,
-        _: PostId,
+        _: PostParent,
     ) -> Result<Option<Slug>, PostError> {
         Ok(None)
     }
@@ -160,6 +160,53 @@ impl PostRepository for Dummy {
     fn available_mime_types(&self, _: &PostTypeName) -> Result<Vec<MimeType>, PostError> {
         Ok(Vec::new())
     }
+    fn update(&self, _: &Post) -> Result<Option<u64>, PostError> {
+        Ok(Some(1))
+    }
+    fn update_name(&self, _: PostId, _: &Slug) -> Result<Option<u64>, PostError> {
+        Ok(Some(1))
+    }
+    fn update_guid(&self, _: PostId, _: &[u8]) -> Result<Option<u64>, PostError> {
+        Ok(Some(0))
+    }
+    fn update_status(&self, _: PostId, _: &PostStatusName) -> Result<Option<u64>, PostError> {
+        Ok(Some(1))
+    }
+    fn update_pinged(&self, _: PostId, _: &[u8]) -> Result<Option<u64>, PostError> {
+        Ok(None)
+    }
+    fn update_post_type(&self, _: PostId, _: &PostTypeName) -> Result<Option<u64>, PostError> {
+        Ok(Some(1))
+    }
+    fn import_id_taken(&self, id: PostId) -> Result<bool, PostError> {
+        Ok(id == PostId(1))
+    }
+    fn raw_row(&self, _: PostId) -> Result<Option<Post>, PostError> {
+        Ok(None)
+    }
+    fn children_of_type(&self, _: PostId, _: &PostTypeName) -> Result<Vec<Post>, PostError> {
+        Ok(Vec::new())
+    }
+    fn reparent_children(
+        &self,
+        _: PostId,
+        _: PostParent,
+        _: &PostTypeName,
+    ) -> Result<Option<u64>, PostError> {
+        Ok(Some(2))
+    }
+    fn revision_ids(&self, _: PostId) -> Result<Vec<PostId>, PostError> {
+        Ok(vec![PostId(9)])
+    }
+    fn reparent_attachments(&self, _: PostId, _: PostParent) -> Result<Option<u64>, PostError> {
+        Ok(Some(0))
+    }
+    fn remove(&self, _: PostId) -> Result<Option<u64>, PostError> {
+        Ok(Some(1))
+    }
+    fn auto_drafts_older_than_a_week(&self) -> Result<Vec<PostId>, PostError> {
+        Ok(Vec::new())
+    }
 }
 
 impl CurrentPost for Dummy {
@@ -171,6 +218,9 @@ impl CurrentPost for Dummy {
 impl PostQuery for Dummy {
     fn query(&self, _: PhpValue) -> Result<PhpValue, PostError> {
         Ok(PhpValue::Array(Vec::new()))
+    }
+    fn get_posts(&self, args: PhpValue) -> Result<PhpValue, PostError> {
+        Ok(args)
     }
 }
 
@@ -200,6 +250,14 @@ fn the_traits_are_object_safe_and_callable() {
     assert_eq!(repo.pages_by_names(&[], &[]).unwrap()[0].id, PostId(3));
     assert_eq!(current.current(), Some(PhpValue::Int(5)));
     assert!(query.query(PhpValue::Null).is_ok());
+    assert_eq!(query.get_posts(PhpValue::Int(3)).unwrap(), PhpValue::Int(3));
+    assert!(repo.import_id_taken(PostId(1)).unwrap());
+    assert_eq!(
+        repo.reparent_children(PostId(4), PostParent(-1), &PostTypeName::new("page"))
+            .unwrap(),
+        Some(2)
+    );
+    assert_eq!(repo.revision_ids(PostId(4)).unwrap(), vec![PostId(9)]);
     assert_eq!(
         posts
             .last_post_date("UTC", &PostTypeName::new("any"))

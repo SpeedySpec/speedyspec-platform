@@ -68,6 +68,62 @@ impl PingStatus {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PostId(pub u64);
 
+/// A post's `post_parent` as PHP holds it: `(int) $postarr['post_parent']`, which may be negative.
+///
+/// WordPress 7.2-RC2 never clamps a negative parent itself (checked by running `wp_insert_post( array( 'post_parent'
+/// => -5 ) )` on MySQL 9.6):
+///
+/// - The `wp_insert_post_parent` filter, `wp_unique_post_slug()`, its `wp_unique_post_slug_is_bad_hierarchical_slug`
+///   filter and the `wp_insert_post_data` filter all receive `-5`.
+/// - The statements carry it: the hierarchical slug check sends `AND post_parent = -5`, which matches no row, so a
+///   page under `-5` may take the slug of a top-level page (a second top-level `clash` page under `-5` stays `clash`,
+///   while one under `0` becomes `clash-2`); the `INSERT` and `UPDATE` send `` `post_parent` = -5 `` (`%d`).
+/// - The column is `bigint(20) unsigned`. `wpdb::set_sql_mode()` removes `STRICT_TRANS_TABLES`, `STRICT_ALL_TABLES`
+///   and `TRADITIONAL` (with `NO_ZERO_DATE`, `ONLY_FULL_GROUP_BY`, `ANSI` and `NO_BACKSLASH_ESCAPES`) from the session,
+///   so MySQL stores `0` with warning 1264 instead of failing. Under a strict mode the statement fails ("Out of range
+///   value for column 'post_parent'") and `wp_insert_post()` answers `db_insert_error`.
+/// - What is read back is `0`: `get_post()`, `wp_get_post_parent_id()` and the `save_post` actions after the insert
+///   see `0`.
+///
+/// So a post being written carries the signed value, and a repository stores [`Self::stored`]. A row read back is
+/// never negative. [`PostId`] stays the type of ids and of the parents the read statements return
+/// ([`crate::PageRow`], [`crate::PostRepository::parent_ids`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct PostParent(pub i64);
+
+impl PostParent {
+    /// `0`: no parent.
+    pub const NONE: Self = Self(0);
+
+    /// The parent post's id when there is one (a value above 0).
+    pub fn id(self) -> Option<PostId> {
+        u64::try_from(self.0).ok().filter(|&id| id > 0).map(PostId)
+    }
+
+    /// What the unsigned column keeps under WordPress's `sql_mode`: a negative value becomes `0`.
+    pub fn stored(self) -> Self {
+        Self(self.0.max(0))
+    }
+
+    /// Whether it is `0` or negative, so that WordPress treats the post as top level once stored.
+    pub fn is_top_level(self) -> bool {
+        self.0 <= 0
+    }
+}
+
+impl From<PostId> for PostParent {
+    /// An id as PHP's `(int)` reads the column: an id above `i64::MAX` becomes `i64::MAX`.
+    fn from(id: PostId) -> Self {
+        Self(i64::try_from(id.0).unwrap_or(i64::MAX))
+    }
+}
+
+impl fmt::Display for PostParent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// A `datetime` column as WordPress keeps it (`Y-m-d H:i:s`), unchecked: the date rules validate it.
 ///
 /// It holds a `Cow` so that [`Self::ZERO`] can be a constant; it otherwise behaves as an owned string.

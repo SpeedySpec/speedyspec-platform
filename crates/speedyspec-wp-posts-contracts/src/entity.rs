@@ -1,7 +1,8 @@
 //! The post entity: one `wp_posts` row as a plain value.
 
 use crate::{
-    CommentStatus, MimeType, PingStatus, PostDate, PostId, PostStatusName, PostTypeName, Slug,
+    CommentStatus, MimeType, PingStatus, PostDate, PostId, PostParent, PostStatusName,
+    PostTypeName, Slug,
 };
 
 /// One `wp_posts` row as a plain value (23 columns; each [`PostDate`] holds two), fields in the table's column
@@ -40,8 +41,12 @@ pub struct Post {
     pub modified: PostDate,
     /// `post_content_filtered`.
     pub content_filtered: Vec<u8>,
-    /// `post_parent`: [`PostId`]`(0)` for a top-level post.
-    pub parent: PostId,
+    /// `post_parent`: [`PostParent::NONE`] for a top-level post.
+    ///
+    /// Negative while a post is being written, as WordPress carries `(int) $postarr['post_parent']` into its filters
+    /// and statements; MySQL stores `0` under `wpdb::set_sql_mode()`'s mode, so a row read back never is (see
+    /// [`PostParent`]). A repository writes the value into the statement and stores [`PostParent::stored`].
+    pub parent: PostParent,
     /// `guid`.
     pub guid: Vec<u8>,
     /// `menu_order`. PHP's (int), which is wider than the int(11) column.
@@ -74,7 +79,7 @@ impl Default for Post {
             pinged: Vec::new(),
             modified: PostDate::default(),
             content_filtered: Vec::new(),
-            parent: PostId(0),
+            parent: PostParent::NONE,
             guid: Vec::new(),
             menu_order: 0,
             post_type: PostTypeName::new("post"),
