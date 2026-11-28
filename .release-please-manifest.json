@@ -45,5 +45,6 @@
   "crates/speedyspec-wp-theme-json-contracts": "0.2.0",
   "crates/speedyspec-wp-token-map": "0.6.0",
   "crates/speedyspec-wp-utf8": "0.6.0",
-  "crates/speedyspec-xmlrpc-contracts": "0.2.0"
+  "crates/speedyspec-xmlrpc-contracts": "0.2.0",
+  "crates/speedyspec-wp-options-contracts": "0.1.0"
 }
