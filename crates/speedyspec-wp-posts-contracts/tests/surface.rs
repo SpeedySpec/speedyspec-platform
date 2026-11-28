@@ -5,12 +5,14 @@ use std::rc::Rc;
 
 use speedyspec_php_serialize::PhpValue;
 use speedyspec_wp_hooks_contracts::HookError;
+use speedyspec_wp_hooks_contracts::HookValue;
 use speedyspec_wp_object_cache_contracts::ObjectCacheError;
 use speedyspec_wp_posts_contracts::{
     CurrentPost, Filter, LastPostField, MimeFilter, MimeType, PageRow, Post, PostDateTime,
     PostError, PostId, PostParent, PostQuery, PostRef, PostRepository, PostStatusName, PostTypeArg,
     PostTypeName, Posts, Slug, Timezone,
 };
+use speedyspec_wp_posts_contracts::{PostArg, PostObject, PostReturn, PostWriteError, WriteResult};
 
 struct Dummy;
 
@@ -96,8 +98,16 @@ impl PostRepository for Dummy {
     fn find(&self, _: PostId) -> Result<Option<Post>, PostError> {
         Ok(None)
     }
-    fn insert(&self, _: &Post) -> Result<Option<PostId>, PostError> {
-        Ok(None)
+    fn insert(&self, post: &Post, import_id: Option<i64>) -> Result<Option<PostId>, PostError> {
+        // As MySQL does: an explicit id above 0 is kept, 0 and below take the next id (50 here), and a null parent
+        // is rejected.
+        if post.parent == PostParent::Null {
+            return Ok(None);
+        }
+        Ok(Some(match import_id {
+            Some(id) if id > 0 => PostId(id as u64),
+            _ => PostId(50),
+        }))
     }
     fn attachment_slug_owner(&self, _: &Slug, _: PostId) -> Result<Option<Slug>, PostError> {
         Ok(None)
@@ -175,11 +185,11 @@ impl PostRepository for Dummy {
     fn update_pinged(&self, _: PostId, _: &[u8]) -> Result<Option<u64>, PostError> {
         Ok(None)
     }
-    fn update_post_type(&self, _: PostId, _: &PostTypeName) -> Result<Option<u64>, PostError> {
-        Ok(Some(1))
+    fn update_post_type(&self, id: i64, _: &PostTypeName) -> Result<Option<u64>, PostError> {
+        Ok(Some(u64::from(id > 0)))
     }
-    fn import_id_taken(&self, id: PostId) -> Result<bool, PostError> {
-        Ok(id == PostId(1))
+    fn import_id_taken(&self, id: i64) -> Result<bool, PostError> {
+        Ok(id == 1)
     }
     fn raw_row(&self, _: PostId) -> Result<Option<Post>, PostError> {
         Ok(None)
@@ -251,9 +261,9 @@ fn the_traits_are_object_safe_and_callable() {
     assert_eq!(current.current(), Some(PhpValue::Int(5)));
     assert!(query.query(PhpValue::Null).is_ok());
     assert_eq!(query.get_posts(PhpValue::Int(3)).unwrap(), PhpValue::Int(3));
-    assert!(repo.import_id_taken(PostId(1)).unwrap());
+    assert!(repo.import_id_taken(1).unwrap());
     assert_eq!(
-        repo.reparent_children(PostId(4), PostParent(-1), &PostTypeName::new("page"))
+        repo.reparent_children(PostId(4), PostParent::Int(-1), &PostTypeName::new("page"))
             .unwrap(),
         Some(2)
     );
@@ -360,4 +370,93 @@ fn the_small_enums_parse_as_wordpress_compares() {
     assert_eq!(Timezone::parse("Server"), Some(Timezone::Server));
     assert_eq!(Timezone::parse("utc"), None);
     assert_eq!(Timezone::Server.as_str(), "server");
+}
+
+#[test]
+fn an_import_id_is_present_or_absent_and_signed() {
+    // `wp_insert_post()` casts a non-empty `import_id` with `(int)`: `'abc'` is `Some(0)` and `-5` is `Some(-5)`; both
+    // are checked (`WHERE ID = 0`, `WHERE ID = -5`) and sent as the `ID`. An empty one is `None`.
+    let repo: Rc<dyn PostRepository> = Rc::new(Dummy);
+    let post = Post::default();
+    assert_eq!(repo.insert(&post, None).unwrap(), Some(PostId(50)));
+    assert_eq!(repo.insert(&post, Some(0)).unwrap(), Some(PostId(50)));
+    assert_eq!(repo.insert(&post, Some(-5)).unwrap(), Some(PostId(50)));
+    assert_eq!(repo.insert(&post, Some(100)).unwrap(), Some(PostId(100)));
+    assert!(!repo.import_id_taken(0).unwrap());
+    assert!(!repo.import_id_taken(-5).unwrap());
+    // `set_post_type()`'s raw id reaches the statement: `WHERE `ID` = -3` changes nothing.
+    assert_eq!(
+        repo.update_post_type(-3, &PostTypeName::new("page"))
+            .unwrap(),
+        Some(0)
+    );
+}
+
+#[test]
+fn a_null_parent_is_representable() {
+    // A `wp_insert_post_parent` callback returned null: the insert carries `NULL` and MySQL rejects it (1048).
+    let repo: Rc<dyn PostRepository> = Rc::new(Dummy);
+    let post = Post {
+        parent: PostParent::Null,
+        ..Post::default()
+    };
+    assert_eq!(repo.insert(&post, None).unwrap(), None);
+    assert_eq!(post.parent.prepared(), 0);
+    assert!(
+        repo.hierarchical_slug_owner(
+            &Slug::from("a"),
+            &PostTypeName::new("page"),
+            PostId(0),
+            PostParent::Null
+        )
+        .unwrap()
+        .is_none()
+    );
+}
+
+#[test]
+fn a_post_object_keeps_its_php_handle() {
+    // Hooks share the caller's object: the handle travels through the argument and back out as the same `Rc`.
+    let object: Rc<dyn std::any::Any> = Rc::new("WP_Post #7");
+    let post = PostObject::with_handle(
+        Post {
+            id: PostId(7),
+            ..Post::default()
+        },
+        HookValue::Opaque(object.clone()),
+    );
+    let arg = PostArg::from(post.clone());
+    let PostArg::Object(passed) = &arg else {
+        panic!("not an object");
+    };
+    let Some(HookValue::Opaque(handle)) = &passed.handle else {
+        panic!("the handle is lost");
+    };
+    assert!(Rc::ptr_eq(handle, &object));
+
+    let returned = PostReturn::Post(Box::new(post));
+    let PostReturn::Post(back) = returned else {
+        panic!("not a post");
+    };
+    assert_eq!(back.post.id, PostId(7));
+    assert!(matches!(&back.handle, Some(HookValue::Opaque(h)) if Rc::ptr_eq(h, &object)));
+
+    // With no PHP object yet the binding builds one; an id stays a reference.
+    assert_eq!(PostObject::new(Post::default()).handle, None);
+    assert_eq!(
+        PostArg::from(PostRef::Current),
+        PostArg::Ref(PostRef::Current)
+    );
+}
+
+#[test]
+fn a_written_id_is_an_integer_post_id() {
+    // `sanitize_post( $postarr, 'db' )` casts `ID` with `(int)` before and after its filters, so the id
+    // `wp_update_post( array( 'ID' => '8' ) )` returns is the int 8, which a `PostId` carries whole.
+    let saved: WriteResult = Ok(PostId(8));
+    let zero: WriteResult = Ok(PostId(0));
+    let failed: WriteResult = Err(PostWriteError::InvalidPost);
+    assert_eq!(saved, Ok(PostId(8)));
+    assert_eq!(zero, Ok(PostId(0)));
+    assert!(failed.is_err());
 }

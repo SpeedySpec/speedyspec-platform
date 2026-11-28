@@ -40,8 +40,9 @@ pub trait PostRepository {
     /// `WP_Post::get_instance()`: `SELECT * FROM {posts} WHERE ID = %d LIMIT 1`.
     fn find(&self, id: PostId) -> Result<Option<Post>, PostError>;
     /// `wp_insert_post()`'s `$wpdb->insert( $wpdb->posts, $data )` (post.php 5268): the 21 columns it writes, plus
-    /// `ID` when `post.id` is non-zero (the `import_id` case); `comment_count` is not written (the column default,
-    /// 0). The new id; `None` when `$wpdb->insert` returns false (for example a duplicate ID).
+    /// `ID` when `import_id` is `Some`; `post.id` is not read, and `comment_count` is not written (the column default,
+    /// 0). The new id (`$wpdb->insert_id`); `None` when `$wpdb->insert` returns false (a duplicate ID, or a
+    /// [`PostParent::Null`] parent, which MySQL rejects with error 1048).
     ///
     /// `wpdb::_insert_replace_helper()` builds it, `%d` for the columns in `$wpdb->field_types` (`post_author`,
     /// `post_parent`, `menu_order`, `ID`) and `%s` for the rest, then `prepare()`s it:
@@ -52,10 +53,14 @@ pub trait PostRepository {
     ///
     /// With an `ID`, `` , `ID` `` follows `` `guid` `` and `, %d` the last `%s`, since `wp_insert_post()` adds the key
     /// after `compact()`. A negative [`Post::parent`] goes into the statement as it is (`-5`) and is stored as `0`
-    /// ([`PostParent::stored`]).
+    /// ([`PostParent::stored`]); a [`PostParent::Null`] one is written `NULL` in place of its `%d`.
     ///
-    /// `wp_insert_post()` first asks [`PostRepository::import_id_taken`] and drops a taken `import_id`.
-    fn insert(&self, post: &Post) -> Result<Option<PostId>, PostError>;
+    /// `import_id` is `$data['ID']`: `wp_insert_post()` casts a non-empty `import_id` with `(int)` (so `'abc'` is
+    /// `Some(0)` and `-5` is `Some(-5)`; `0`, `'0'` and `''` are empty, `None`), asks
+    /// [`PostRepository::import_id_taken`] with the cast value, and passes it here when no row has it. `Some(0)` and
+    /// a negative id are sent as they are (`` `ID` `` with `, 0` or `, -5`); MySQL stores both as the next
+    /// auto-increment id, since the unsigned column clamps `-5` to `0` and `0` asks for the next id.
+    fn insert(&self, post: &Post, import_id: Option<i64>) -> Result<Option<PostId>, PostError>;
     /// `wp_unique_post_slug()`, attachments:
     /// `SELECT post_name FROM {posts} WHERE post_name = %s AND ID != %d LIMIT 1`.
     fn attachment_slug_owner(&self, slug: &Slug, except: PostId)
@@ -63,7 +68,8 @@ pub trait PostRepository {
     /// `wp_unique_post_slug()`, hierarchical types: `SELECT post_name FROM {posts} WHERE post_name = %s AND
     /// post_type IN ( %s, 'attachment' ) AND ID != %d AND post_parent = %d LIMIT 1`.
     ///
-    /// A negative `parent` is sent as it is (`post_parent = -5`) and matches no row, since the column is unsigned.
+    /// A negative `parent` is sent as it is (`post_parent = -5`) and matches no row, since the column is unsigned; a
+    /// [`PostParent::Null`] one is sent as `0` ([`PostParent::prepared`]).
     fn hierarchical_slug_owner(
         &self,
         slug: &Slug,
@@ -229,7 +235,9 @@ pub trait PostRepository {
     /// ```
     ///
     /// `wpdb::update()` builds it (`` `column` = format `` joined with `, `, the conditions with ` AND `) and
-    /// `prepare()`s it. A negative [`Post::parent`] is sent as it is and stored as `0`.
+    /// `prepare()`s it. A negative [`Post::parent`] is sent as it is and stored as `0`; a [`PostParent::Null`] one is
+    /// written `` `post_parent` = NULL ``, which MySQL stores as `0` with a warning (an `UPDATE`, unlike an `INSERT`,
+    /// is not rejected outside strict mode).
     ///
     /// The rows changed, as MySQL counts them: an update that matches a row but changes nothing is `Some(0)`, and so
     /// is one that matches none. `None` where `$wpdb->update` returns false.
@@ -257,15 +265,14 @@ pub trait PostRepository {
     fn update_pinged(&self, id: PostId, pinged: &[u8]) -> Result<Option<u64>, PostError>;
     /// `set_post_type()`'s `$wpdb->update( $wpdb->posts, array( 'post_type' => $post_type ), array( 'ID' => $post_id
     /// ) )` (post.php 2475): ``UPDATE `{posts}` SET `post_type` = %s WHERE `ID` = %d``. The rows changed, which
-    /// `set_post_type()` returns.
-    fn update_post_type(
-        &self,
-        id: PostId,
-        post_type: &PostTypeName,
-    ) -> Result<Option<u64>, PostError>;
+    /// `set_post_type()` returns. `id` is `set_post_type()`'s `$post_id` as `%d` prints it, so `-3` sends
+    /// ``WHERE `ID` = -3``.
+    fn update_post_type(&self, id: i64, post_type: &PostTypeName)
+    -> Result<Option<u64>, PostError>;
     /// `wp_insert_post()`'s `import_id` check (post.php 5254), through `$wpdb->get_var()`:
-    /// `SELECT ID FROM {posts} WHERE ID = %d`. Whether a row has the id, so the `import_id` is dropped.
-    fn import_id_taken(&self, id: PostId) -> Result<bool, PostError>;
+    /// `SELECT ID FROM {posts} WHERE ID = %d`, `%d` being the `(int)` cast `import_id`, `0` and negative values
+    /// included (no row has them). Whether a row has the id, so the `import_id` is dropped.
+    fn import_id_taken(&self, id: i64) -> Result<bool, PostError>;
     /// `wp_delete_post()`'s first read (post.php 4034), through `$wpdb->get_row()`:
     /// `SELECT * FROM {posts} WHERE ID = %d`, with no `LIMIT` (unlike [`PostRepository::find`]). The row, or `None`.
     fn raw_row(&self, id: PostId) -> Result<Option<Post>, PostError>;
@@ -341,6 +348,9 @@ pub trait Clock {
     /// `get_gmt_from_date()`.
     fn gmt_from_date(&self, local: &[u8]) -> Vec<u8>;
     /// `strtotime()` in UTC; `None` is false.
+    ///
+    /// PHP's `time()` (`wp_trash_post()`'s `_wp_trash_meta_time`, `check_and_publish_future_post()`'s comparison) is
+    /// `timestamp( now_gmt() )`: the clock has no method of its own for it.
     fn timestamp(&self, datetime: &[u8]) -> Option<i64>;
 }
 

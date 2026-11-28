@@ -12,14 +12,15 @@ Part of the [SpeedySpec platform](https://github.com/SpeedySpec/speedyspec-platf
 ## What it gives you
 
 - `Post`: the post entity, a plain object.
-- Values: `PostId`, `PostParent` (a parent as PHP holds it, which may be negative while a post is written),
+- Values: `PostId`, `PostParent` (a parent as WordPress writes it, which may be negative or null),
   `PostTypeName`, `PostStatusName`, `Slug`, `PostDateTime` and the post type and status objects.
 - `Posts`: reading posts, one method per `post.php` function (`get_post()`, the field readers, pages and
   hierarchy, counts, the last post dates and the `posts` cache functions), with `PostRef`, `Filter`, `Timezone`,
   `LastPostField`, and `MimeFilter` and `PostTypeArg`, which keep WordPress's string-or-array arguments apart.
 - `PostWrites`: writing posts, one method per `post.php` function (`wp_insert_post()`, `wp_update_post()`, delete,
   trash, untrash, publish, the status transition, sticky posts, pings, `set_post_type()` and auto-draft cleanup), with
-  PHP-shaped arguments, `WriteResult`, `PostWriteError` (the `WP_Error`s they return) and `PostReturn`.
+  PHP-shaped arguments, `WriteResult`, `PostWriteError` (the `WP_Error`s they return), `PostReturn`, and
+  `PostObject` and `PostArg`, which carry a caller's PHP post object so hooks share it.
 - `PostRepository`: one method per `wp_posts` statement `post.php` sends, reads and writes, each documented with
   WordPress 7.2-RC2's text (as `wpdb` builds it for `$wpdb->insert`, `update` and `delete`), and `PageRow`.
 - Ports to code that is not ported yet: `Users`, `Taxonomy`, `Comments`, `Rewrite`, `Uploads`, `Theme`, `Revisions`

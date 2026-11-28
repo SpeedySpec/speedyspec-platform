@@ -193,30 +193,43 @@ fn post_error_displays_the_cause() {
 #[test]
 fn a_negative_parent_is_carried_and_stored_as_zero() {
     // WordPress sends `post_parent = -5` and MySQL keeps 0 under `wpdb::set_sql_mode()`'s mode.
-    let negative = PostParent(-5);
+    let negative = PostParent::Int(-5);
     assert_eq!(negative.stored(), PostParent::NONE);
+    assert_eq!(negative.prepared(), -5);
     assert_eq!(negative.id(), None);
     assert!(negative.is_top_level());
-    assert_eq!(negative.to_string(), "-5");
 
+    assert_eq!(PostParent::NONE, PostParent::Int(0));
     assert_eq!(PostParent::NONE.id(), None);
     assert!(PostParent::NONE.is_top_level());
     assert_eq!(PostParent::default(), PostParent::NONE);
 
-    let parent = PostParent(7);
+    let parent = PostParent::Int(7);
     assert_eq!(parent.stored(), parent);
     assert_eq!(parent.id(), Some(PostId(7)));
     assert!(!parent.is_top_level());
 }
 
 #[test]
+fn a_null_parent_prints_as_zero_and_updates_to_zero() {
+    // A `wp_insert_post_parent` callback that returned null: `%d` prints 0, `$wpdb->update` writes NULL and MySQL
+    // stores 0; an insert of it fails with error 1048.
+    let null = PostParent::Null;
+    assert_ne!(null, PostParent::NONE);
+    assert_eq!(null.prepared(), 0);
+    assert_eq!(null.stored(), PostParent::NONE);
+    assert_eq!(null.id(), None);
+    assert!(null.is_top_level());
+}
+
+#[test]
 fn an_id_becomes_a_parent_as_php_reads_it() {
-    assert_eq!(PostParent::from(PostId(4)), PostParent(4));
+    assert_eq!(PostParent::from(PostId(4)), PostParent::Int(4));
     assert_eq!(PostParent::from(PostId(0)), PostParent::NONE);
     // `(int)` of a value past PHP_INT_MAX is PHP_INT_MAX.
     assert_eq!(
         PostParent::from(PostId(i64::MAX as u64 + 1)),
-        PostParent(i64::MAX)
+        PostParent::Int(i64::MAX)
     );
 }
 

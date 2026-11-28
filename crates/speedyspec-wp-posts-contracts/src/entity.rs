@@ -44,8 +44,10 @@ pub struct Post {
     /// `post_parent`: [`PostParent::NONE`] for a top-level post.
     ///
     /// Negative while a post is being written, as WordPress carries `(int) $postarr['post_parent']` into its filters
-    /// and statements; MySQL stores `0` under `wpdb::set_sql_mode()`'s mode, so a row read back never is (see
-    /// [`PostParent`]). A repository writes the value into the statement and stores [`PostParent::stored`].
+    /// and statements, or [`PostParent::Null`] when a `wp_insert_post_parent` callback returned `null`. MySQL stores
+    /// `0` for a negative value under `wpdb::set_sql_mode()`'s mode and rejects `NULL` in an `INSERT` (error 1048),
+    /// so a row read back is never either (see [`PostParent`]). A repository writes the value into the statement and
+    /// stores [`PostParent::stored`].
     pub parent: PostParent,
     /// `guid`.
     pub guid: Vec<u8>,

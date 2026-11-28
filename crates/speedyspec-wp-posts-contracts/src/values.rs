@@ -68,59 +68,91 @@ impl PingStatus {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PostId(pub u64);
 
-/// A post's `post_parent` as PHP holds it: `(int) $postarr['post_parent']`, which may be negative.
+/// A post's `post_parent` as WordPress writes it: `(int) $postarr['post_parent']`, which may be negative, or what the
+/// `wp_insert_post_parent` filter returned, which WordPress does not cast and which may be `null`.
 ///
-/// WordPress 7.2-RC2 never clamps a negative parent itself (checked by running `wp_insert_post( array( 'post_parent'
-/// => -5 ) )` on MySQL 9.6):
+/// WordPress 7.2-RC2 never clamps a parent itself (checked by running `wp_insert_post()` on MySQL 9.6):
 ///
 /// - The `wp_insert_post_parent` filter, `wp_unique_post_slug()`, its `wp_unique_post_slug_is_bad_hierarchical_slug`
-///   filter and the `wp_insert_post_data` filter all receive `-5`.
+///   filter and the `wp_insert_post_data` filter all receive `-5` for `post_parent => -5`.
 /// - The statements carry it: the hierarchical slug check sends `AND post_parent = -5`, which matches no row, so a
 ///   page under `-5` may take the slug of a top-level page (a second top-level `clash` page under `-5` stays `clash`,
 ///   while one under `0` becomes `clash-2`); the `INSERT` and `UPDATE` send `` `post_parent` = -5 `` (`%d`).
-/// - The column is `bigint(20) unsigned`. `wpdb::set_sql_mode()` removes `STRICT_TRANS_TABLES`, `STRICT_ALL_TABLES`
-///   and `TRADITIONAL` (with `NO_ZERO_DATE`, `ONLY_FULL_GROUP_BY`, `ANSI` and `NO_BACKSLASH_ESCAPES`) from the session,
-///   so MySQL stores `0` with warning 1264 instead of failing. Under a strict mode the statement fails ("Out of range
-///   value for column 'post_parent'") and `wp_insert_post()` answers `db_insert_error`.
+/// - The column is `bigint(20) unsigned NOT NULL`. `wpdb::set_sql_mode()` removes `STRICT_TRANS_TABLES`,
+///   `STRICT_ALL_TABLES` and `TRADITIONAL` (with `NO_ZERO_DATE`, `ONLY_FULL_GROUP_BY`, `ANSI` and
+///   `NO_BACKSLASH_ESCAPES`) from the session, so MySQL stores `0` with warning 1264 instead of failing. Under a
+///   strict mode the statement fails ("Out of range value for column 'post_parent'") and `wp_insert_post()` answers
+///   `db_insert_error`.
 /// - What is read back is `0`: `get_post()`, `wp_get_post_parent_id()` and the `save_post` actions after the insert
 ///   see `0`.
 ///
-/// So a post being written carries the signed value, and a repository stores [`Self::stored`]. A row read back is
-/// never negative. [`PostId`] stays the type of ids and of the parents the read statements return
+/// [`PostParent::Null`] is a `wp_insert_post_parent` callback that returned `null` (one that forgot to `return`):
+///
+/// - `$wpdb->insert` and `$wpdb->update` write SQL `NULL` for it, not `%d`: `NULL` in the `INSERT`'s `VALUES`, and
+///   `` `post_parent` = NULL `` in the `UPDATE`.
+/// - MySQL rejects `NULL` in a single-row `INSERT` into the `NOT NULL` column even outside strict mode (error 1048,
+///   "Column 'post_parent' cannot be null"), so `$wpdb->insert` returns false and `wp_insert_post()` answers
+///   `db_insert_error` with that message as its data, or `0`. An `UPDATE` stores `0` with a warning.
+/// - `$wpdb->prepare()`'s `%d` prints it as `0`, so the hierarchical slug check sends `post_parent = 0`
+///   ([`PostParent::prepared`]).
+///
+/// Any other value the filter returns reaches the statements through `%d`, so a binding reduces it to the integer PHP's
+/// `intval()` gives ([`PostParent::Int`]).
+///
+/// So a post being written carries this value, and a repository stores [`Self::stored`]. A row read back is never
+/// negative or null. [`PostId`] stays the type of ids and of the parents the read statements return
 /// ([`crate::PageRow`], [`crate::PostRepository::parent_ids`]).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct PostParent(pub i64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum PostParent {
+    /// An integer parent: an id above 0, `0` for none, or a negative value.
+    Int(i64),
+    /// `null`, from a `wp_insert_post_parent` callback.
+    Null,
+}
 
 impl PostParent {
     /// `0`: no parent.
-    pub const NONE: Self = Self(0);
+    pub const NONE: Self = Self::Int(0);
 
     /// The parent post's id when there is one (a value above 0).
     pub fn id(self) -> Option<PostId> {
-        u64::try_from(self.0).ok().filter(|&id| id > 0).map(PostId)
+        match self {
+            Self::Int(n) => u64::try_from(n).ok().filter(|&id| id > 0).map(PostId),
+            Self::Null => None,
+        }
     }
 
-    /// What the unsigned column keeps under WordPress's `sql_mode`: a negative value becomes `0`.
+    /// What `$wpdb->prepare()`'s `%d` prints: the integer, and `0` for [`PostParent::Null`].
+    pub fn prepared(self) -> i64 {
+        match self {
+            Self::Int(n) => n,
+            Self::Null => 0,
+        }
+    }
+
+    /// What the unsigned, `NOT NULL` column keeps under WordPress's `sql_mode` when the row is written: a negative
+    /// value becomes `0`, and so does [`PostParent::Null`] in an `UPDATE` (an `INSERT` of it fails instead, so there
+    /// is no row).
     pub fn stored(self) -> Self {
-        Self(self.0.max(0))
+        Self::Int(self.prepared().max(0))
     }
 
-    /// Whether it is `0` or negative, so that WordPress treats the post as top level once stored.
+    /// Whether WordPress treats the post as top level once stored: `0`, a negative value or `null`.
     pub fn is_top_level(self) -> bool {
-        self.0 <= 0
+        self.prepared() <= 0
+    }
+}
+
+impl Default for PostParent {
+    fn default() -> Self {
+        Self::NONE
     }
 }
 
 impl From<PostId> for PostParent {
     /// An id as PHP's `(int)` reads the column: an id above `i64::MAX` becomes `i64::MAX`.
     fn from(id: PostId) -> Self {
-        Self(i64::try_from(id.0).unwrap_or(i64::MAX))
-    }
-}
-
-impl fmt::Display for PostParent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        Self::Int(i64::try_from(id.0).unwrap_or(i64::MAX))
     }
 }
 

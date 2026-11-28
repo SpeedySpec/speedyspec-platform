@@ -3,10 +3,11 @@
 use std::rc::Rc;
 
 use speedyspec_php_serialize::PhpValue;
-use speedyspec_wp_hooks_contracts::HookError;
+use speedyspec_wp_hooks_contracts::{HookError, HookValue};
 use speedyspec_wp_posts_contracts::{
-    Charset, Comments, Post, PostError, PostId, PostRef, PostReturn, PostStatusName, PostTypeName,
-    PostWriteError, PostWrites, Revisions, Rewrite, Taxonomy, Theme, Uploads, Users, WriteResult,
+    Charset, Comments, Post, PostArg, PostError, PostId, PostObject, PostRef, PostReturn,
+    PostStatusName, PostTypeName, PostWriteError, PostWrites, Revisions, Rewrite, Taxonomy, Theme,
+    Uploads, Users, WriteResult,
 };
 
 struct Dummy;
@@ -25,29 +26,33 @@ impl PostWrites for Dummy {
         Ok(if post_id <= 0 {
             PostReturn::Value(PhpValue::Bool(false))
         } else {
-            PostReturn::Post(Box::new(Post {
+            PostReturn::Post(Box::new(PostObject::new(Post {
                 id: PostId(post_id as u64),
                 ..Post::default()
-            }))
+            })))
         })
     }
-    fn trash(&self, _: PostRef) -> Result<PostReturn, PostError> {
-        Ok(PostReturn::Value(PhpValue::Null))
+    fn trash(&self, post: PostArg) -> Result<PostReturn, PostError> {
+        // `wp_trash_post()` returns the object it was given.
+        Ok(match post {
+            PostArg::Object(object) => PostReturn::Post(object),
+            PostArg::Ref(_) => PostReturn::Value(PhpValue::Null),
+        })
     }
-    fn untrash(&self, _: PostRef) -> Result<PostReturn, PostError> {
+    fn untrash(&self, _: PostArg) -> Result<PostReturn, PostError> {
         Err(HookError::message("thrown").into())
     }
-    fn publish(&self, _: PostRef) -> Result<(), PostError> {
+    fn publish(&self, _: PostArg) -> Result<(), PostError> {
         Ok(())
     }
-    fn check_and_publish_future(&self, _: PostRef) -> Result<(), PostError> {
+    fn check_and_publish_future(&self, _: PostArg) -> Result<(), PostError> {
         Ok(())
     }
     fn transition(
         &self,
         _: &PostStatusName,
         _: &PostStatusName,
-        _: &Post,
+        _: &PostObject,
     ) -> Result<(), PostError> {
         Ok(())
     }
@@ -57,10 +62,10 @@ impl PostWrites for Dummy {
     fn unstick(&self, _: i64) -> Result<(), PostError> {
         Ok(())
     }
-    fn add_ping(&self, _: PostRef, _: &PhpValue) -> Result<Option<u64>, PostError> {
+    fn add_ping(&self, _: PostArg, _: &PhpValue) -> Result<Option<u64>, PostError> {
         Ok(Some(1))
     }
-    fn set_post_type(&self, _: PostId, _: &PhpValue) -> Result<Option<u64>, PostError> {
+    fn set_post_type(&self, _: i64, _: &PhpValue) -> Result<Option<u64>, PostError> {
         Ok(None)
     }
     fn delete_auto_drafts(&self) -> Result<(), PostError> {
@@ -224,23 +229,34 @@ fn the_write_surface_is_object_safe_and_callable() {
     );
     assert!(matches!(
         writes.delete(3, false).unwrap(),
-        PostReturn::Post(post) if post.id == PostId(3)
+        PostReturn::Post(post) if post.post.id == PostId(3) && post.handle.is_none()
     ));
     assert_eq!(
-        writes.trash(PostRef::Current).unwrap(),
+        writes.trash(PostRef::Current.into()).unwrap(),
         PostReturn::Value(PhpValue::Null)
     );
+    let handle: Rc<dyn std::any::Any> = Rc::new(7_u64);
+    let object = PostObject::with_handle(Post::default(), HookValue::Opaque(handle.clone()));
+    let PostReturn::Post(trashed) = writes.trash(object.into()).unwrap() else {
+        panic!("not the post");
+    };
+    assert!(matches!(&trashed.handle, Some(HookValue::Opaque(h)) if Rc::ptr_eq(h, &handle)));
     assert!(matches!(
-        writes.untrash(PostRef::Id(PostId(1))),
+        writes.untrash(PostRef::Id(PostId(1)).into()),
         Err(PostError::Hook(_))
     ));
-    writes.publish(PostRef::Id(PostId(1))).unwrap();
-    writes.check_and_publish_future(PostRef::Current).unwrap();
+    writes.publish(PostRef::Id(PostId(1)).into()).unwrap();
+    writes
+        .publish(PostObject::with_handle(Post::default(), HookValue::Int(1)).into())
+        .unwrap();
+    writes
+        .check_and_publish_future(PostRef::Current.into())
+        .unwrap();
     writes
         .transition(
             &PostStatusName::new("publish"),
             &PostStatusName::new("new"),
-            &Post::default(),
+            &PostObject::new(Post::default()),
         )
         .unwrap();
     writes.stick(-3).unwrap();
@@ -248,7 +264,7 @@ fn the_write_surface_is_object_safe_and_callable() {
     assert_eq!(
         writes
             .add_ping(
-                PostRef::Id(PostId(1)),
+                PostRef::Id(PostId(1)).into(),
                 &PhpValue::Str(b"http://a.example/".to_vec())
             )
             .unwrap(),
@@ -256,7 +272,7 @@ fn the_write_surface_is_object_safe_and_callable() {
     );
     assert_eq!(
         writes
-            .set_post_type(PostId(1), &PhpValue::Str(b"page".to_vec()))
+            .set_post_type(1, &PhpValue::Str(b"page".to_vec()))
             .unwrap(),
         None
     );

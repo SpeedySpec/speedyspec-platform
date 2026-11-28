@@ -27,4 +27,4 @@ pub use values::{
     CommentStatus, MimeType, PingStatus, PostDate, PostDateTime, PostId, PostParent,
     PostStatusName, PostStatusObject, PostType, PostTypeName, Slug,
 };
-pub use write::{PostReturn, PostWrites, WriteResult};
+pub use write::{PostArg, PostObject, PostReturn, PostWrites, WriteResult};

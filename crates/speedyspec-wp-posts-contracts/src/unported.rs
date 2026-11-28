@@ -65,7 +65,9 @@ pub trait Taxonomy {
     /// hooks, so asking for names and for objects ([`Taxonomy::default_terms`]) apart is not observable.
     fn object_taxonomies(&self, post_type: &PostTypeName) -> Result<Vec<String>, PostError>;
     /// The names of the taxonomies in `get_object_taxonomies( $post_type, 'object' )` whose `default_term` is not
-    /// empty, in registration order: the ones `wp_insert_post()` and `wp_publish_post()` give a default term.
+    /// empty, in registration order: the ones `wp_insert_post()` gives a default term. `wp_publish_post()` also
+    /// handles `category` whether or not it has a `default_term` (post.php 5661-5685), so its use case walks
+    /// [`Taxonomy::object_taxonomies`] and takes `category` and these.
     fn default_terms(&self, post_type: &PostTypeName) -> Result<Vec<String>, PostError>;
     /// `get_taxonomy( $taxonomy )`: `None` where it returns `false`; otherwise its `cap->assign_terms`, as PHP holds
     /// it, which `wp_insert_post()`'s `tax_input` checks with `current_user_can()`.

@@ -17,12 +17,17 @@ fn post_type(s: &str) -> PostTypeName {
     PostTypeName::new(s)
 }
 
+/// An id as PHP's `(int)` holds it.
+fn as_int(id: PostId) -> i64 {
+    PostParent::from(id).prepared()
+}
+
 /// A post of `post_type` named `name` under `parent`, with an auto id.
 fn named(name: &str, kind: &str, parent: i64) -> Post {
     Post {
         name: slug(name),
         post_type: post_type(kind),
-        parent: PostParent(parent),
+        parent: PostParent::Int(parent),
         ..Post::default()
     }
 }
@@ -35,7 +40,7 @@ fn named(name: &str, kind: &str, parent: i64) -> Post {
 /// last, on post types of their own (`wr-*`); the auto-draft check compares the ids before and after its inserts.
 pub fn post_repository_suite(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post)
+        repo.insert(post, None)
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -51,11 +56,18 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
         || format!("{a:?} {b:?} {c:?}"),
     );
 
-    // insert_with_id_is_honoured: the auto-increment continues past an explicit ID, as MySQL's does.
-    let explicit = insert(&Post {
-        id: PostId(100),
-        ..named("imported", "post", 0)
-    });
+    // insert_with_id_is_honoured: the auto-increment continues past an explicit ID, as MySQL's does; `post.id` is
+    // not read.
+    let explicit = repo
+        .insert(
+            &Post {
+                id: PostId(7_777),
+                ..named("imported", "post", 0)
+            },
+            Some(100),
+        )
+        .expect("insert")
+        .expect("the insert returns an id");
     let next = insert(&named("after-import", "post", 0));
     ensure(
         "insert_with_id_is_honoured",
@@ -65,10 +77,7 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
 
     // insert_taken_id_is_none
     let taken = repo
-        .insert(&Post {
-            id: PostId(100),
-            ..named("duplicate", "post", 0)
-        })
+        .insert(&named("duplicate", "post", 0), Some(100))
         .expect("insert");
     let kept = find(PostId(100)).map(|p| p.name);
     ensure(
@@ -169,8 +178,13 @@ pub fn post_repository_suite(repo: &dyn PostRepository) {
 
     // hierarchical_owner_matches_type_or_attachment_under_the_parent
     let hier = |name: &str, kind: &str, except: PostId, parent: i64| {
-        repo.hierarchical_slug_owner(&slug(name), &post_type(kind), except, PostParent(parent))
-            .expect("hierarchical_slug_owner")
+        repo.hierarchical_slug_owner(
+            &slug(name),
+            &post_type(kind),
+            except,
+            PostParent::Int(parent),
+        )
+        .expect("hierarchical_slug_owner")
     };
     let chapter = insert(&named("chapter", "page", 50));
     insert(&named("image", "attachment", 50));
@@ -259,7 +273,7 @@ pub fn binary_safe_suite(repo: &dyn PostRepository) {
         ..Post::default()
     };
     let id = repo
-        .insert(&post)
+        .insert(&post, None)
         .expect("insert")
         .expect("the insert returns an id");
     let read = repo.find(id).expect("find");
@@ -327,7 +341,7 @@ fn grown(before: &[(Vec<u8>, u64)], after: &[(Vec<u8>, u64)]) -> Vec<(String, u6
 
 fn read_statements(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post)
+        repo.insert(post, None)
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -345,7 +359,7 @@ fn read_statements(repo: &dyn PostRepository) {
         },
         ..named("zero-dated", "rd-many", 0)
     });
-    let child = insert(&named("child", "rd-many", PostParent::from(zero_dated).0));
+    let child = insert(&named("child", "rd-many", as_int(zero_dated)));
     let mut many = repo
         .find_many(&[child, PostId(9_998), zero_dated, child])
         .expect("find_many");
@@ -357,7 +371,7 @@ fn read_statements(repo: &dyn PostRepository) {
         },
         Post {
             id: child,
-            ..named("child", "rd-many", PostParent::from(zero_dated).0)
+            ..named("child", "rd-many", as_int(zero_dated))
         },
     ];
     ensure(
@@ -605,7 +619,7 @@ fn read_statements(repo: &dyn PostRepository) {
 
 fn last_post_time(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post)
+        repo.insert(post, None)
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -717,7 +731,7 @@ fn last_post_time(repo: &dyn PostRepository) {
 
 fn write_statements(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post)
+        repo.insert(post, None)
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -741,7 +755,7 @@ fn write_statements(repo: &dyn PostRepository) {
             .expect("hierarchical_slug_owner")
     };
     insert(&named("wr-clash", "wr-page", 0));
-    let under_negative = owner(PostParent(-5));
+    let under_negative = owner(PostParent::Int(-5));
     let top_level = owner(PostParent::NONE);
     ensure(
         "hierarchical_owner_under_a_negative_parent_matches_nothing",
@@ -750,13 +764,70 @@ fn write_statements(repo: &dyn PostRepository) {
     );
 
     // import_id_taken_sees_existing_ids
-    let taken = repo.import_id_taken(negative).expect("import_id_taken");
-    let free = repo.import_id_taken(missing).expect("import_id_taken");
-    let zero = repo.import_id_taken(PostId(0)).expect("import_id_taken");
+    let taken = repo
+        .import_id_taken(as_int(negative))
+        .expect("import_id_taken");
+    let free = repo
+        .import_id_taken(as_int(missing))
+        .expect("import_id_taken");
+    let zero = repo.import_id_taken(0).expect("import_id_taken")
+        || repo.import_id_taken(-5).expect("import_id_taken");
     ensure(
         "import_id_taken_sees_existing_ids",
         taken && !free && !zero,
         || format!("{taken} {free} {zero}"),
+    );
+
+    // insert_with_a_zero_or_negative_id_takes_the_next_id: `'abc'` casts to 0 and `-5` stays -5; both are sent as
+    // the `ID` and MySQL gives the row the next auto-increment id (the unsigned column clamps -5 to 0).
+    let auto = repo
+        .insert(&named("wr-auto", "wr-post", 0), None)
+        .expect("insert")
+        .expect("the insert returns an id");
+    let at_zero = repo
+        .insert(&named("wr-import-zero", "wr-post", 0), Some(0))
+        .expect("insert");
+    let at_negative = repo
+        .insert(&named("wr-import-negative", "wr-post", 0), Some(-5))
+        .expect("insert");
+    let names = |id: Option<PostId>| {
+        id.and_then(|id| repo.find(id).expect("find"))
+            .map(|p| p.name)
+    };
+    ensure(
+        "insert_with_a_zero_or_negative_id_takes_the_next_id",
+        at_zero == Some(PostId(auto.0 + 1))
+            && at_negative == Some(PostId(auto.0 + 2))
+            && names(at_zero) == Some(slug("wr-import-zero"))
+            && names(at_negative) == Some(slug("wr-import-negative")),
+        || format!("{auto:?} {at_zero:?} {at_negative:?}"),
+    );
+
+    // insert_null_parent_writes_no_row: `NULL` in the `NOT NULL` column is error 1048, so `$wpdb->insert` is false.
+    let null_parent = repo
+        .insert(
+            &Post {
+                parent: PostParent::Null,
+                ..named("wr-null-parent", "wr-page", 0)
+            },
+            None,
+        )
+        .expect("insert");
+    let owner_of_null = repo
+        .flat_slug_owner(&slug("wr-null-parent"), &post_type("wr-page"), PostId(0))
+        .expect("flat_slug_owner");
+    ensure(
+        "insert_null_parent_writes_no_row",
+        null_parent.is_none() && owner_of_null.is_none(),
+        || format!("{null_parent:?} {owner_of_null:?}"),
+    );
+
+    // hierarchical_owner_under_a_null_parent_is_the_top_level_one: `%d` prints `null` as 0.
+    let under_null = owner(PostParent::Null);
+    ensure(
+        "hierarchical_owner_under_a_null_parent_is_the_top_level_one",
+        under_null == Some(slug("wr-clash")),
+        || format!("{under_null:?}"),
     );
 
     // update_writes_every_column_but_id_and_comment_count: the rows changed, as MySQL counts them.
@@ -787,7 +858,7 @@ fn write_statements(repo: &dyn PostRepository) {
             gmt: PostDateTime::ZERO,
         },
         content_filtered: b"cf".to_vec(),
-        parent: PostParent(3),
+        parent: PostParent::Int(3),
         guid: b"http://example.org/?p=wr".to_vec(),
         menu_order: 4,
         post_type: post_type("wr-other"),
@@ -819,7 +890,7 @@ fn write_statements(repo: &dyn PostRepository) {
 
     // update_negative_parent_is_stored_as_zero
     repo.update(&Post {
-        parent: PostParent(-7),
+        parent: PostParent::Int(-7),
         ..changed.clone()
     })
     .expect("update");
@@ -828,6 +899,25 @@ fn write_statements(repo: &dyn PostRepository) {
         "update_negative_parent_is_stored_as_zero",
         stored == PostParent::NONE,
         || format!("{stored:?}"),
+    );
+
+    // update_null_parent_is_stored_as_zero: an `UPDATE` of `NULL` is a warning outside strict mode, and stores 0.
+    repo.update(&Post {
+        parent: PostParent::Int(5),
+        ..changed.clone()
+    })
+    .expect("update");
+    let nulled = repo
+        .update(&Post {
+            parent: PostParent::Null,
+            ..changed.clone()
+        })
+        .expect("update");
+    let stored = find(id).parent;
+    ensure(
+        "update_null_parent_is_stored_as_zero",
+        nulled == Some(1) && stored == PostParent::NONE,
+        || format!("{nulled:?} {stored:?}"),
     );
 
     column_updates(repo);
@@ -843,7 +933,7 @@ fn column_updates(repo: &dyn PostRepository) {
         ..named("wr-column", "wr-col", 0)
     };
     let id = repo
-        .insert(&base)
+        .insert(&base, None)
         .expect("insert")
         .expect("the insert returns an id");
     let missing = PostId(9_996);
@@ -893,12 +983,22 @@ fn column_updates(repo: &dyn PostRepository) {
         (
             "update_post_type_writes_post_type",
             Box::new(|id| {
-                repo.update_post_type(id, &post_type("wr-col-2"))
+                repo.update_post_type(as_int(id), &post_type("wr-col-2"))
                     .expect("update_post_type")
             }),
             Box::new(|p: &mut Post| p.post_type = post_type("wr-col-2")),
         ),
     ];
+    // update_post_type_of_a_negative_id_changes_nothing: `WHERE `ID` = -3` matches no row.
+    let negative = repo
+        .update_post_type(-3, &post_type("wr-col-2"))
+        .expect("update_post_type");
+    ensure(
+        "update_post_type_of_a_negative_id_changes_nothing",
+        negative == Some(0),
+        || format!("{negative:?}"),
+    );
+
     for (check, update, apply) in &checks {
         let first = update(id);
         apply(&mut expected);
@@ -916,7 +1016,7 @@ fn column_updates(repo: &dyn PostRepository) {
 /// `wp_delete_post()`'s statements and `wp_delete_auto_drafts()`' one.
 fn deleting(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post)
+        repo.insert(post, None)
             .expect("insert")
             .expect("the insert returns an id")
     };
@@ -940,7 +1040,7 @@ fn deleting(repo: &dyn PostRepository) {
     );
 
     // children_of_type_reads_the_children_of_one_type
-    let from = PostParent::from(tree).0;
+    let from = as_int(tree);
     let first = insert(&named("wr-leaf-1", "wr-tree", from));
     let second = insert(&named("wr-leaf-2", "wr-tree", from));
     let other = insert(&named("wr-leaf-3", "wr-other-tree", from));
@@ -973,36 +1073,36 @@ fn deleting(repo: &dyn PostRepository) {
 
     // reparent_children_moves_the_children_of_one_type_up
     let moved = repo
-        .reparent_children(tree, PostParent(77), &post_type("wr-tree"))
+        .reparent_children(tree, PostParent::Int(77), &post_type("wr-tree"))
         .expect("reparent_children");
     let again = repo
-        .reparent_children(tree, PostParent(77), &post_type("wr-tree"))
+        .reparent_children(tree, PostParent::Int(77), &post_type("wr-tree"))
         .expect("reparent_children");
     ensure(
         "reparent_children_moves_the_children_of_one_type_up",
         moved == Some(2)
             && again == Some(0)
-            && parent_of(first) == PostParent(77)
-            && parent_of(second) == PostParent(77)
-            && parent_of(other) == PostParent(from)
-            && parent_of(attachment) == PostParent(from),
+            && parent_of(first) == PostParent::Int(77)
+            && parent_of(second) == PostParent::Int(77)
+            && parent_of(other) == PostParent::Int(from)
+            && parent_of(attachment) == PostParent::Int(from),
         || format!("{moved:?} {again:?}"),
     );
 
     // reparent_attachments_moves_only_attachments_up
     let moved = repo
-        .reparent_attachments(tree, PostParent(77))
+        .reparent_attachments(tree, PostParent::Int(77))
         .expect("reparent_attachments");
     let again = repo
-        .reparent_attachments(tree, PostParent(77))
+        .reparent_attachments(tree, PostParent::Int(77))
         .expect("reparent_attachments");
     ensure(
         "reparent_attachments_moves_only_attachments_up",
         moved == Some(1)
             && again == Some(0)
-            && parent_of(attachment) == PostParent(77)
-            && parent_of(other) == PostParent(from)
-            && parent_of(revision) == PostParent(from),
+            && parent_of(attachment) == PostParent::Int(77)
+            && parent_of(other) == PostParent::Int(from)
+            && parent_of(revision) == PostParent::Int(from),
         || format!("{moved:?} {again:?}"),
     );
 
@@ -1060,7 +1160,7 @@ fn deleting(repo: &dyn PostRepository) {
 ///   post's GMT date is zero.
 pub fn mysql_suite(repo: &dyn PostRepository) {
     let insert = |post: &Post| {
-        repo.insert(post)
+        repo.insert(post, None)
             .expect("insert")
             .expect("the insert returns an id")
     };
