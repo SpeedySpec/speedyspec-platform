@@ -2052,6 +2052,7 @@ dependencies = [
 name = "speedyspec-wp-posts-contracts"
 version = "0.3.1"
 dependencies = [
+ "speedyspec-hooks",
  "speedyspec-php-serialize",
  "speedyspec-wp-hooks-contracts",
  "speedyspec-wp-object-cache-contracts",

@@ -3,7 +3,8 @@
 use speedyspec_php_serialize::{PhpKey, PhpValue};
 use speedyspec_wp_posts_contracts::{
     CommentStatus, MimeType, PingStatus, Post, PostDate, PostDateTime, PostError, PostId,
-    PostStatusName, PostStatusObject, PostType, PostTypeError, PostTypeName, Slug,
+    PostParent, PostStatusName, PostStatusObject, PostType, PostTypeError, PostTypeName,
+    PostWriteError, Slug,
 };
 
 fn key(s: &str) -> PhpKey {
@@ -142,7 +143,7 @@ fn post_default_is_wp_posts_defaults() {
     assert!(p.pinged.is_empty());
     assert_eq!(p.modified, zero);
     assert!(p.content_filtered.is_empty());
-    assert_eq!(p.parent, PostId(0));
+    assert_eq!(p.parent, PostParent::NONE);
     assert!(p.guid.is_empty());
     assert_eq!(p.menu_order, 0);
     assert_eq!(p.post_type, PostTypeName::new("post"));
@@ -187,4 +188,114 @@ fn post_error_displays_the_cause() {
     let e = PostError::Db("table missing".to_string());
     assert_eq!(e.to_string(), "the database failed: table missing");
     let _: &dyn std::error::Error = &e;
+}
+
+#[test]
+fn a_negative_parent_is_carried_and_stored_as_zero() {
+    // WordPress sends `post_parent = -5` and MySQL keeps 0 under `wpdb::set_sql_mode()`'s mode.
+    let negative = PostParent::Int(-5);
+    assert_eq!(negative.stored(), PostParent::NONE);
+    assert_eq!(negative.prepared(), -5);
+    assert_eq!(negative.id(), None);
+    assert!(negative.is_top_level());
+
+    assert_eq!(PostParent::NONE, PostParent::Int(0));
+    assert_eq!(PostParent::NONE.id(), None);
+    assert!(PostParent::NONE.is_top_level());
+    assert_eq!(PostParent::default(), PostParent::NONE);
+
+    let parent = PostParent::Int(7);
+    assert_eq!(parent.stored(), parent);
+    assert_eq!(parent.id(), Some(PostId(7)));
+    assert!(!parent.is_top_level());
+}
+
+#[test]
+fn a_null_parent_prints_as_zero_and_updates_to_zero() {
+    // A `wp_insert_post_parent` callback that returned null: `%d` prints 0, `$wpdb->update` writes NULL and MySQL
+    // stores 0; an insert of it fails with error 1048.
+    let null = PostParent::Null;
+    assert_ne!(null, PostParent::NONE);
+    assert_eq!(null.prepared(), 0);
+    assert_eq!(null.stored(), PostParent::NONE);
+    assert_eq!(null.id(), None);
+    assert!(null.is_top_level());
+}
+
+#[test]
+fn an_id_becomes_a_parent_as_php_reads_it() {
+    assert_eq!(PostParent::from(PostId(4)), PostParent::Int(4));
+    assert_eq!(PostParent::from(PostId(0)), PostParent::NONE);
+    // `(int)` of a value past PHP_INT_MAX is PHP_INT_MAX.
+    assert_eq!(
+        PostParent::from(PostId(i64::MAX as u64 + 1)),
+        PostParent::Int(i64::MAX)
+    );
+}
+
+#[test]
+fn write_errors_have_wordpress_codes_and_messages() {
+    let cases = [
+        (
+            PostWriteError::InvalidPost,
+            "invalid_post",
+            "Invalid post ID.",
+        ),
+        (
+            PostWriteError::EmptyContent,
+            "empty_content",
+            "Content, title, and excerpt are empty.",
+        ),
+        (PostWriteError::InvalidDate, "invalid_date", "Invalid date."),
+        (
+            PostWriteError::InvalidPageTemplate,
+            "invalid_page_template",
+            "Invalid page template.",
+        ),
+        (
+            PostWriteError::DbUpdate {
+                attachment: false,
+                last_error: String::new(),
+            },
+            "db_update_error",
+            "Could not update post in the database.",
+        ),
+        (
+            PostWriteError::DbUpdate {
+                attachment: true,
+                last_error: String::new(),
+            },
+            "db_update_error",
+            "Could not update attachment in the database.",
+        ),
+        (
+            PostWriteError::DbInsert {
+                attachment: false,
+                last_error: "Duplicate entry".to_string(),
+            },
+            "db_insert_error",
+            "Could not insert post into the database.",
+        ),
+        (
+            PostWriteError::DbInsert {
+                attachment: true,
+                last_error: String::new(),
+            },
+            "db_insert_error",
+            "Could not insert attachment into the database.",
+        ),
+    ];
+    for (error, code, message) in cases {
+        assert_eq!(error.code(), Some(code));
+        assert_eq!(error.message(), Some(message));
+        assert_eq!(error.to_string(), message);
+    }
+
+    let delegated = PostWriteError::Delegated(PhpValue::Object {
+        class: "WP_Error".to_string(),
+        properties: Vec::new(),
+    });
+    assert_eq!(delegated.code(), None);
+    assert_eq!(delegated.message(), None);
+    assert_eq!(delegated.to_string(), "a WP_Error from WordPress");
 }
