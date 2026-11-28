@@ -15,8 +15,21 @@
 //!   `DateTime::setTimestamp()` would move it, keeping its time zone.
 //!
 //! WordPress's `current_time()` (`time()` and `new DateTime( 'now', ... )`), `current_datetime()`, `wp_date()` and
-//! everything above them follow. Relative strings (`"+1 day"`, `"tomorrow"`), `strtotime()` without a base,
-//! `mktime()`, `getdate()`, `localtime()` and `hrtime()` still read the real clock.
+//! everything above them follow.
+//!
+//! What still reads the real clock:
+//!
+//! - MySQL's own `NOW()` and `CURRENT_TIMESTAMP` (for example `wp_delete_auto_drafts()`'s
+//!   `DATE_SUB( NOW(), INTERVAL 7 DAY )`): the database's clock is not PHP's;
+//! - `DateTime` strings other than "now": relative ones (`"+1 day"`, `"tomorrow"`), `"now UTC"`, and time-only ones
+//!   (`"10:00"`) that take today's date;
+//! - `strtotime()` without a base, `mktime()`, `getdate()`, `localtime()`, `idate()`, `hrtime()` and
+//!   `gettimeofday()`;
+//! - the forms a decorator hands back to the original handler: `microtime()` with an array or object argument (a
+//!   `TypeError` either way), and `date()`/`gmdate()` with a format that is not valid UTF-8;
+//! - code the opcache JIT compiled to call a handler's address directly. The decorators work through
+//!   `internal_function.handler`, which the interpreter (and the JIT, for code compiled after [`install`]) reads at
+//!   each call; the compat runner's embedded PHP runs with the JIT off, which `tests/driver.rs` pins.
 //!
 //! The clock is `$GLOBALS['speedyspec_compat_clock']`, which the driver sets from the scenario's and each step's
 //! `clock`. While it is not an int every decorated function calls its original handler unchanged, so the decorators
@@ -216,6 +229,16 @@ unsafe fn arg<'a>(ex: *mut zend_execute_data, i: usize) -> Option<&'a Zval> {
     }
 }
 
+/// `microtime()`'s `$as_float` as PHP's coercive `bool` parameter reads a scalar (`1`, `"1"`, `0.0`, null); `None`
+/// for an array or object, which the original handler rejects.
+fn scalar_bool(zv: &Zval) -> Option<bool> {
+    if zv.is_array() || zv.is_object() {
+        None
+    } else {
+        Some(zv.coerce_to_bool())
+    }
+}
+
 /// Whether a `DateTime` "now" argument (the first) means the current time: absent, null, `""` or `"now"`.
 fn means_now(arg: Option<&Zval>) -> bool {
     match arg {
@@ -247,7 +270,7 @@ unsafe extern "C" fn handler<const I: usize>(ex: *mut zend_execute_data, ret: *m
         let count = (*ex).This.u2.num_args as usize;
         match entry.kind {
             Kind::Time if count == 0 => ret_zv.set_long(clock),
-            Kind::Microtime if count <= 1 => match arg(ex, 0).map(Zval::bool) {
+            Kind::Microtime if count <= 1 => match arg(ex, 0).map(scalar_bool) {
                 None | Some(Some(false)) => {
                     if ret_zv
                         .set_string(&format!("0.00000000 {clock}"), false)

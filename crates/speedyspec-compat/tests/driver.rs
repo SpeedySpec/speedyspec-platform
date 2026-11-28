@@ -1,5 +1,6 @@
-//! The driver's write-recording options in the embedded PHP: the frozen clock, `user`, `cron` and `snapshot` (the
-//! last only with MySQL, through `SPEEDYSPEC_TEST_MYSQL_URL`).
+//! The driver's write-recording options in the embedded PHP: the frozen clock, `user`, `cron` and `snapshot`. The
+//! last two need MySQL (`SPEEDYSPEC_TEST_MYSQL_URL`) and run over WordPress's own hooks and `wpdb` from the pinned
+//! release.
 
 use std::process::ExitCode;
 use std::rc::Rc;
@@ -26,13 +27,10 @@ function t_absolute() { return (new DateTime('2020-02-02 02:02:02', new DateTime
 function t_current_time_mysql() {
     return (new DateTime('now', new DateTimeZone('Asia/Tokyo')))->format('Y-m-d H:i:s');
 }
-function _get_cron_array() { return $GLOBALS['t_cron'] ?? []; }
-function t_schedule($timestamp, $hook, $args, $schedule = false) {
-    $key = md5(serialize($args));
-    $event = ['schedule' => $schedule, 'args' => $args];
-    if ($schedule !== false) { $event['interval'] = 3600; }
-    $GLOBALS['t_cron'][$timestamp][$hook][$key] = $event;
-    return true;
+// The decorators work through each function's handler, which JIT-compiled code may bypass: the JIT stays off.
+function t_jit() {
+    $status = function_exists('opcache_get_status') ? @opcache_get_status(false) : false;
+    return is_array($status) && !empty($status['jit']['on']);
 }
 "#;
 
@@ -85,7 +83,9 @@ fn case_clock(runner: &mut PhpRunner) -> Result<(), String> {
             { "call": "t_create" },
             { "call": "t_absolute" },
             { "call": "time", "clock": CLOCK + 60 },
-            { "call": "time" }
+            { "call": "time" },
+            { "call": "microtime", "args": [1] },
+            { "call": "t_jit" }
         ] }),
     )?;
     let want = [
@@ -103,6 +103,8 @@ fn case_clock(runner: &mut PhpRunner) -> Result<(), String> {
         json!(1_580_608_922),
         json!(CLOCK + 60),
         json!(CLOCK + 60),
+        json!({ "float": (CLOCK + 60) as f64 }),
+        json!(false),
     ];
     for (i, want) in want.iter().enumerate() {
         expect(&format!("step {i}"), &steps[i].returned, want)?;
@@ -144,14 +146,117 @@ fn case_user(runner: &mut PhpRunner) -> Result<(), String> {
     expect("users", &json!(got), &json!([3, 5, 5]))
 }
 
+/// WordPress's own hooks and `wpdb` (the `wp-db` area's files) on `url`'s database, with a `wp_options` table holding
+/// a `cron` row, and tables to snapshot.
+fn wordpress_on(url: &str, root: &str) -> String {
+    format!(
+        r#"define('ABSPATH', {root:?});
+define('WPINC', 'wp-includes');
+require ABSPATH . WPINC . '/plugin.php';
+require ABSPATH . WPINC . '/load.php';
+require ABSPATH . WPINC . '/functions.php';
+require ABSPATH . WPINC . '/class-wpdb.php';
+$u = parse_url({url:?});
+define('DB_NAME', ltrim($u['path'] ?? '', '/'));
+define('DB_USER', urldecode($u['user'] ?? ''));
+define('DB_PASSWORD', urldecode($u['pass'] ?? ''));
+define('DB_HOST', ($u['host'] ?? 'localhost') . (isset($u['port']) ? ':' . $u['port'] : ''));
+define('DB_CHARSET', 'utf8mb4');
+define('DB_COLLATE', '');
+define('WP_DEBUG', false);
+$GLOBALS['wpdb'] = new wpdb(DB_USER, DB_PASSWORD, DB_NAME, DB_HOST);
+$GLOBALS['wpdb']->set_prefix('wp_');
+$m = new mysqli(($u['host'] ?? 'localhost'), DB_USER, DB_PASSWORD, DB_NAME, $u['port'] ?? 3306);
+$m->query('DROP TABLE IF EXISTS wp_options');
+$m->query("CREATE TABLE wp_options (option_id bigint unsigned NOT NULL auto_increment, option_name varchar(191) NOT NULL default '', option_value longtext NOT NULL, autoload varchar(20) NOT NULL default 'yes', PRIMARY KEY (option_id), UNIQUE KEY option_name (option_name))");
+$cron = [
+    {clock_late} => ['b_hook' => [md5(serialize(['x'])) => ['schedule' => false, 'args' => ['x']]],
+                     'a_hook' => [md5(serialize([])) => ['schedule' => false, 'args' => []]]],
+    {clock} => ['z_hook' => [md5(serialize([])) => ['schedule' => 'hourly', 'args' => [], 'interval' => 3600]]],
+    'version' => 2,
+];
+$stmt = $m->prepare("INSERT INTO wp_options (option_name, option_value) VALUES ('cron', ?)");
+$serialized = serialize($cron);
+$stmt->bind_param('s', $serialized);
+$stmt->execute();
+$m->query('DROP TABLE IF EXISTS t_compat_snapshot');
+$m->query('CREATE TABLE t_compat_snapshot (b int NOT NULL, a int NOT NULL, v varchar(10) NULL, PRIMARY KEY (a, b))');
+$m->query("INSERT INTO t_compat_snapshot VALUES (1, 2, 'x'), (2, 1, NULL), (1, 1, 'é')");
+$m->query('DROP TABLE IF EXISTS t_compat_nokey');
+$m->query('CREATE TABLE t_compat_nokey (v varchar(10) NOT NULL)');
+$m->query("INSERT INTO t_compat_nokey VALUES ('b'), ('a'), ('B')");
+"#,
+        clock = CLOCK,
+        clock_late = CLOCK + 10,
+    )
+}
+
+/// A scenario that counts a `query` filter and reads `$wpdb`'s counters and the hook globals after `observed`, the
+/// step that snapshots or reports cron (or not, for the baseline).
+fn unperturbed(observed: Value) -> Value {
+    let mut middle = json!({ "call": "has_filter", "args": ["query"] });
+    for (key, value) in observed.as_object().into_iter().flatten() {
+        middle[key] = value.clone();
+    }
+    json!({ "name": "unperturbed", "steps": [
+        { "call": "add_filter", "args": ["query", { "callback": "return_arg", "label": "query" }] },
+        { "call": "$wpdb->get_var", "args": ["SELECT 1"] },
+        middle,
+        { "call": "get:$wpdb->num_queries" },
+        { "call": "get:$wpdb->last_query" },
+        { "call": "get:$wpdb->last_result" },
+        { "call": "$wpdb->get_var", "args": ["SELECT option_value FROM wp_options WHERE option_name = 'cron'"] }
+    ] })
+}
+
+/// Recording the cron schedule and snapshots leaves what later steps see as it was: no filter ran (the `query`
+/// fixture is not invoked and `$wp_filters` counts nothing more), `$wpdb`'s `num_queries`, `last_query` and
+/// `last_result` are unchanged, and the `cron` option is not rewritten.
+fn case_observing_perturbs_nothing(runner: &mut PhpRunner) -> Result<(), String> {
+    let baseline = run(runner, unperturbed(json!({})))?;
+    let observed = run(
+        runner,
+        unperturbed(json!({ "cron": true, "snapshot": ["wp_options", "t_compat_snapshot"] })),
+    )?;
+    if observed[2].cron.is_null() || observed[2].snapshot.is_null() {
+        return Err(format!(
+            "the observing step reported nothing: {:?}",
+            observed[2]
+        ));
+    }
+    if let Some(threw) = observed[2]
+        .cron
+        .get("threw")
+        .or(observed[2].snapshot.get("threw"))
+    {
+        return Err(format!("observing failed: {threw}"));
+    }
+    expect(
+        "the query fixture's invocations while observing",
+        &json!(observed[2].invocations.len()),
+        &json!(0),
+    )?;
+    for step in 2..baseline.len() {
+        let (mut want, mut got) = (baseline[step].clone(), observed[step].clone());
+        for result in [&mut want, &mut got] {
+            result.cron = Value::Null;
+            result.snapshot = Value::Null;
+        }
+        if want != got {
+            return Err(format!(
+                "step {step} differs once observed: {want:?} vs {got:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn case_cron(runner: &mut PhpRunner) -> Result<(), String> {
     let steps = run(
         runner,
         json!({ "name": "cron", "cron": true, "steps": [
-            { "call": "t_schedule", "args": [CLOCK + 10, "b_hook", ["x"]] },
-            { "call": "t_schedule", "args": [CLOCK, "z_hook", [], "hourly"] },
-            { "call": "t_schedule", "args": [CLOCK + 10, "a_hook", []], "cron": false },
-            { "call": "t_user" }
+            { "call": "t_user" },
+            { "call": "t_user", "cron": false }
         ] }),
     )?;
     let event = |ts: i64, hook: &str, schedule: Value, interval: Value, args: Value| {
@@ -164,23 +269,8 @@ fn case_cron(runner: &mut PhpRunner) -> Result<(), String> {
         ]))
     };
     expect(
-        "after one event",
+        "ordered by timestamp, then hook, without version",
         &steps[0].cron,
-        &pairs(json!([[
-            0,
-            event(
-                CLOCK + 10,
-                "b_hook",
-                json!(false),
-                Value::Null,
-                json!([[0, "x"]])
-            )
-        ]])),
-    )?;
-    expect("a step that turns cron off", &steps[2].cron, &Value::Null)?;
-    expect(
-        "ordered by timestamp, then hook",
-        &steps[3].cron,
         &pairs(json!([
             [
                 0,
@@ -202,7 +292,8 @@ fn case_cron(runner: &mut PhpRunner) -> Result<(), String> {
             ]
         ])),
     )?;
-    let text = serde_json::to_string(&steps[2]).map_err(|e| e.to_string())?;
+    expect("a step that turns cron off", &steps[1].cron, &Value::Null)?;
+    let text = serde_json::to_string(&steps[1]).map_err(|e| e.to_string())?;
     if text.contains("\"cron\"") || text.contains("\"snapshot\"") {
         return Err(format!(
             "a step without cron or snapshot serialises them: {text}"
@@ -211,37 +302,14 @@ fn case_cron(runner: &mut PhpRunner) -> Result<(), String> {
     Ok(())
 }
 
-/// The DB_* constants for `url`, as an area's setup defines them for wpdb.
-fn db_constants(url: &str) -> String {
-    format!(
-        r#"$u = parse_url({url:?});
-define('DB_NAME', ltrim($u['path'] ?? '', '/'));
-define('DB_USER', urldecode($u['user'] ?? ''));
-define('DB_PASSWORD', urldecode($u['pass'] ?? ''));
-define('DB_HOST', ($u['host'] ?? 'localhost') . (isset($u['port']) ? ':' . $u['port'] : ''));
-$m = new mysqli(($u['host'] ?? 'localhost'), DB_USER, DB_PASSWORD, DB_NAME, $u['port'] ?? 3306);
-$m->query('DROP TABLE IF EXISTS t_compat_snapshot');
-$m->query('CREATE TABLE t_compat_snapshot (b int NOT NULL, a int NOT NULL, v varchar(10) NULL, PRIMARY KEY (a, b))');
-$m->query("INSERT INTO t_compat_snapshot VALUES (1, 2, 'x'), (2, 1, NULL), (1, 1, 'é')");
-$m->query('DROP TABLE IF EXISTS t_compat_nokey');
-$m->query('CREATE TABLE t_compat_nokey (v varchar(10) NOT NULL)');
-$m->query("INSERT INTO t_compat_nokey VALUES ('b'), ('a')");
-function t_insert($v) {{
-    $m = new mysqli(parse_url(getenv('SPEEDYSPEC_TEST_MYSQL_URL'), PHP_URL_HOST), DB_USER, DB_PASSWORD, DB_NAME,
-        parse_url(getenv('SPEEDYSPEC_TEST_MYSQL_URL'), PHP_URL_PORT) ?: 3306);
-    return $m->query("INSERT INTO t_compat_nokey VALUES ('$v')");
-}}
-"#
-    )
-}
-
 fn case_snapshot(php_runner: &mut PhpRunner) -> Result<(), String> {
     let steps = run(
         php_runner,
         json!({ "name": "snapshot", "snapshot": ["t_compat_snapshot"], "steps": [
             { "call": "t_user" },
-            { "call": "t_insert", "args": ["c"], "snapshot": ["t_compat_nokey", "t_compat_snapshot"] },
-            { "call": "t_user", "snapshot": [] }
+            { "call": "t_user", "snapshot": ["t_compat_nokey", "t_compat_snapshot"] },
+            { "call": "t_user", "snapshot": [] },
+            { "call": "t_user", "snapshot": ["t_compat_missing"] }
         ] }),
     )?;
     let row = |b: &str, a: &str, v: Value| pairs(json!([["b", b], ["a", a], ["v", v]]));
@@ -256,12 +324,12 @@ fn case_snapshot(php_runner: &mut PhpRunner) -> Result<(), String> {
         &pairs(json!([["t_compat_snapshot", keyed.clone()]])),
     )?;
     let nokey = pairs(json!([
-        [0, pairs(json!([["v", "a"]]))],
-        [1, pairs(json!([["v", "b"]]))],
-        [2, pairs(json!([["v", "c"]]))]
+        [0, pairs(json!([["v", "B"]]))],
+        [1, pairs(json!([["v", "a"]]))],
+        [2, pairs(json!([["v", "b"]]))]
     ]));
     expect(
-        "the step's own tables, in its order",
+        "the step's own tables, in its order; no key orders by bytes",
         &steps[1].snapshot,
         &pairs(json!([
             ["t_compat_nokey", nokey],
@@ -272,6 +340,21 @@ fn case_snapshot(php_runner: &mut PhpRunner) -> Result<(), String> {
         "an empty list snapshots nothing",
         &steps[2].snapshot,
         &Value::Null,
+    )?;
+    let failed = &steps[3].snapshot;
+    expect(
+        "a missing table is reported in the step",
+        &failed.get("threw").cloned().unwrap_or(Value::Null),
+        &json!("LogicException"),
+    )?;
+    let message = failed.get("message").and_then(Value::as_str).unwrap_or("");
+    if !message.contains("t_compat_missing") {
+        return Err(format!("the failure does not name the table: {message}"));
+    }
+    expect(
+        "the step itself still returned",
+        &steps[3].returned,
+        &json!(0),
     )
 }
 
@@ -291,7 +374,19 @@ fn main() -> ExitCode {
         }
     };
     let mysql = std::env::var("SPEEDYSPEC_TEST_MYSQL_URL").ok();
-    let extra = mysql.as_deref().map(db_constants).unwrap_or_default();
+    let extra = match mysql.as_deref() {
+        Some(url) => {
+            let release = speedyspec_compat::pinned_wordpress();
+            match speedyspec_compat::wordpress_release(&release) {
+                Ok(root) => wordpress_on(url, &format!("{}/", root.display())),
+                Err(why) => {
+                    println!("FAILED: WordPress {release}: {why}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        None => String::new(),
+    };
     let mut runner = runner(php, extra);
     let mut cases: Vec<(&str, Case)> = vec![
         ("clock", case_clock),
@@ -300,12 +395,18 @@ fn main() -> ExitCode {
             case_no_clock_reads_the_real_time,
         ),
         ("user", case_user),
-        ("cron", case_cron),
     ];
     if mysql.is_some() {
+        cases.push(("cron", case_cron));
         cases.push(("snapshot", case_snapshot));
+        cases.push((
+            "observing_perturbs_nothing",
+            case_observing_perturbs_nothing,
+        ));
     } else {
-        println!("skipped: snapshot (set SPEEDYSPEC_TEST_MYSQL_URL)");
+        println!(
+            "skipped: cron, snapshot, observing_perturbs_nothing (set SPEEDYSPEC_TEST_MYSQL_URL)"
+        );
     }
     let mut failed = 0;
     for (name, case) in cases {

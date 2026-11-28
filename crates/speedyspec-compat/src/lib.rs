@@ -84,14 +84,19 @@ pub struct Step {
     /// without a timestamp, and `DateTime` "now" (so `current_time()` and `wp_date()`) answer it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clock: Option<i64>,
-    /// Logs this user in (`wp_set_current_user`) before the call; the user stays for later steps.
+    /// Logs this user in (`wp_set_current_user`) before the call; the user stays for later steps. The login runs
+    /// inside the step, so callbacks on `set_current_user` are reported as the step's invocations, and a failure as
+    /// what it returned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user: Option<i64>,
-    /// After the call, reports these tables' rows ([`StepResult::snapshot`]), ordered by primary key. Overrides the
-    /// scenario's `snapshot`; an empty list reports none.
+    /// After the call, reports these tables' rows ([`StepResult::snapshot`]), ordered by primary key (by every column,
+    /// in binary order, without one), read through a connection of the driver's own so `$wpdb` sees nothing.
+    /// Overrides the scenario's `snapshot`; an empty list reports none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot: Option<Vec<String>>,
-    /// After the call, reports the cron schedule ([`StepResult::cron`]). Overrides the scenario's `cron`.
+    /// After the call, reports the cron schedule ([`StepResult::cron`]), read from the `cron` row through the
+    /// driver's own connection rather than `get_option()`, so no filter runs and nothing is cached or written.
+    /// Overrides the scenario's `cron`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cron: Option<bool>,
 }
@@ -113,12 +118,12 @@ pub struct StepResult {
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub state: Value,
     /// The rows of the tables the step snapshots, by table, each ordered by its primary key; null when it snapshots
-    /// none.
+    /// none, and `{"threw": .., "message": ..}` when reading them failed.
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub snapshot: Value,
     /// The `cron` option's schedule after the step, normalised: one `{timestamp, hook, schedule, interval, args}` per
     /// event, ordered by timestamp, hook and argument key, without the option's `version`; null when the step does
-    /// not report it.
+    /// not report it, and `{"threw": .., "message": ..}` when reading it failed.
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub cron: Value,
 }
