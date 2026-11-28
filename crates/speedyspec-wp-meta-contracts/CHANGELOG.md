@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-meta-contracts-v0.3.0...speedyspec-wp-meta-contracts-v0.4.0) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **meta-contracts:** MetaKeys requires subtypes(); MetaRepository::for_objects returns Vec<MetaRow> instead of Vec<Meta>; MetaRepository requires ids_of_object().
+
+### Features
+
+* **meta-contracts:** subtypes on MetaKeys, WordPress's cache-priming read, and an object's meta ids ([#25](https://github.com/SpeedySpec/speedyspec-platform/issues/25)) ([37d5a3d](https://github.com/SpeedySpec/speedyspec-platform/commit/37d5a3d7ebadac4e87214582f5a4b8028bb54313))
+
 ## [0.3.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-meta-contracts-v0.2.0...speedyspec-wp-meta-contracts-v0.3.0) (2026-11-26)
 
 
