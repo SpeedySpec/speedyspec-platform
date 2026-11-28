@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-compat-v0.10.2...speedyspec-compat-v0.11.0) (2026-11-28)
+
+
+### Features
+
+* **compat:** record writes: table snapshots, a frozen clock, users and cron ([#23](https://github.com/SpeedySpec/speedyspec-platform/issues/23)) ([9bcd01f](https://github.com/SpeedySpec/speedyspec-platform/commit/9bcd01f0eb1ee9158aab2db0f72becb0632f515e))
+
 ## [0.10.2](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-compat-v0.10.1...speedyspec-compat-v0.10.2) (2026-11-27)
 
 

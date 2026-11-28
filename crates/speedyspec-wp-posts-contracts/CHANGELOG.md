@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-posts-contracts-v0.3.1...speedyspec-wp-posts-contracts-v0.4.0) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **posts-contracts:** the write surface (posts and meta, phase 5) ([#24](https://github.com/SpeedySpec/speedyspec-platform/issues/24))
+
+### Features
+
+* **posts-contracts:** the write surface (posts and meta, phase 5) ([#24](https://github.com/SpeedySpec/speedyspec-platform/issues/24)) ([ab5f218](https://github.com/SpeedySpec/speedyspec-platform/commit/ab5f218a0690103a8187e38b9113c564e78d3f3c))
+
 ## [0.3.1](https://github.com/SpeedySpec/speedyspec-platform/compare/speedyspec-wp-posts-contracts-v0.3.0...speedyspec-wp-posts-contracts-v0.3.1) (2026-11-27)
 
 
